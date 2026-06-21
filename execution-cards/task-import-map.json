@@ -1,0 +1,21 @@
+{
+  "schema_version": "2026-06-21-execution-cards-v3",
+  "status": "implementation_complete_with_exec013_doc_preconnect",
+  "execution_root": "implementation",
+  "cards": [
+    {"id":"EXEC-000","file":"EXEC-000-design-baseline-coverage-gate.md","depends_on":[]},
+    {"id":"EXEC-001","file":"EXEC-001-official-capability-environment-gate.md","depends_on":["EXEC-000"]},
+    {"id":"EXEC-002","file":"EXEC-002-project-scaffold-mcp-gateway.md","depends_on":["EXEC-001"]},
+    {"id":"EXEC-003","file":"EXEC-003-foundation-guards-audit-budget.md","depends_on":["EXEC-002"]},
+    {"id":"EXEC-004","file":"EXEC-004-auth-policy-grant-store.md","depends_on":["EXEC-003"]},
+    {"id":"EXEC-005","file":"EXEC-005-connector-auth-discovery.md","depends_on":["EXEC-004"]},
+    {"id":"EXEC-006","file":"EXEC-006-repo-binding-snapshot-manifest.md","depends_on":["EXEC-005"]},
+    {"id":"EXEC-007","file":"EXEC-007-indexer-fixture-spec.md","depends_on":["EXEC-006"]},
+    {"id":"EXEC-008","file":"EXEC-008-read-only-tools.md","depends_on":["EXEC-007"]},
+    {"id":"EXEC-009","file":"EXEC-009-audit-evidence-log-privacy.md","depends_on":["EXEC-008"]},
+    {"id":"EXEC-010","file":"EXEC-010-e2e-validation-chatgpt-connector.md","depends_on":["EXEC-009"]},
+    {"id":"EXEC-011","file":"EXEC-011-chatgpt-dev-connector-hardening.md","depends_on":["EXEC-010"]},
+    {"id":"EXEC-012","file":"EXEC-012-chatgpt-default-context-connect-readiness.md","depends_on":["EXEC-011"]},
+    {"id":"EXEC-013","file":"EXEC-013-doc-taxonomy-and-preconnect-chain.md","depends_on":["EXEC-012"]}
+  ]
+}

@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+coverage/
+.nyc_output/
+
+# Local runtime and editor files
+.env
+.env.*
+*.local
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs and temporary files
+*.log
+tmp/
+temp/
+.tmp/
+
+# Private tunnel/client material
+tunnel-client*
+*.pem
+*.key
+*.pfx
+*.p12
+*.jks
+*.keystore
+
+# Local review receipts can include machine-specific paths.
+*.claude-review/
+**/*.claude-review/
+docs/reports/*.receipt.json
+execution-cards/**/*receipt.json
+execution-cards/**/*input.json
+execution-cards/**/validator_result.json
+execution-cards/**/runtime-*.json
+
+# Keep source, tests, docs, fixtures, package-lock, and schemas versioned.
