@@ -83,7 +83,7 @@ For ChatGPT web（网页端）, expose that local endpoint through Secure MCP Tu
 
 Full setup guide: [CONNECT_CHATGPT.md](CONNECT_CHATGPT.md).
 
-## ChatGPT Connector Setup
+## ChatGPT App / Connector Setup
 
 In ChatGPT Developer mode（开发者模式）, create an MCP app/connector（连接器）with:
 
@@ -118,7 +118,9 @@ If your ChatGPT UI requires OAuth（开放授权）, this project is not in prod
 ## References
 
 - OpenAI Apps SDK（应用开发包）: https://developers.openai.com/apps-sdk/
+- Connect from ChatGPT（从 ChatGPT 连接）: https://developers.openai.com/apps-sdk/deploy/connect-chatgpt
 - ChatGPT Developer mode（开发者模式）: https://developers.openai.com/api/docs/guides/developer-mode
+- Secure MCP tunnels（安全 MCP 隧道）: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
 - MCP in Apps SDK（模型上下文协议）: https://developers.openai.com/apps-sdk/concepts/mcp-server
 - Apps SDK security and privacy（安全与隐私）: https://developers.openai.com/apps-sdk/guides/security-privacy
 - MCP tools specification（工具规范）: https://modelcontextprotocol.io/specification/2025-06-18/server/tools

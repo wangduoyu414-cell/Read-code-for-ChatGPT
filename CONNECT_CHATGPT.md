@@ -181,7 +181,9 @@ Get-CimInstance Win32_Process -Filter "name = 'node.exe'" |
 ## 10. Official References（官方参考）
 
 - OpenAI Apps SDK（应用开发包）: https://developers.openai.com/apps-sdk/
+- Connect from ChatGPT（从 ChatGPT 连接）: https://developers.openai.com/apps-sdk/deploy/connect-chatgpt
 - ChatGPT Developer mode（开发者模式）: https://developers.openai.com/api/docs/guides/developer-mode
+- Secure MCP tunnels（安全 MCP 隧道）: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
 - MCP in Apps SDK（模型上下文协议）: https://developers.openai.com/apps-sdk/concepts/mcp-server
 - Apps SDK security and privacy（安全与隐私）: https://developers.openai.com/apps-sdk/guides/security-privacy
 - MCP tools specification（工具规范）: https://modelcontextprotocol.io/specification/2025-06-18/server/tools
