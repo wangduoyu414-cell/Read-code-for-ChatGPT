@@ -30,7 +30,26 @@ const ALLOWED_EXTENSIONS = new Set([
   ".vue", ".svelte", ".astro", ".prisma", ".proto", ".sql",
 ]);
 
-const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MiB per file
+const KNOWN_TEXT_FILENAMES = new Set([
+  ".dockerignore",
+  ".editorconfig",
+  ".eslintignore",
+  ".eslintrc",
+  ".gitattributes",
+  ".gitignore",
+  ".npmignore",
+  ".nvmrc",
+  ".prettierignore",
+  ".prettierrc",
+  ".stylelintrc",
+  "dockerfile",
+  "license",
+  "makefile",
+  "readme",
+]);
+
+const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MiB per file
+const TEXT_SAMPLE_BYTES = 8192;
 
 function languageFromExt(ext: string): string {
   const map: Record<string, string> = {
@@ -46,6 +65,28 @@ function languageFromExt(ext: string): string {
 
 function blockedDirectoryReason(name: string): string | undefined {
   return BLOCKED_DIRECTORY_REASONS.get(name.toLowerCase());
+}
+
+function isKnownTextFilename(name: string): boolean {
+  return KNOWN_TEXT_FILENAMES.has(name.toLowerCase());
+}
+
+function looksLikeText(content: Buffer): boolean {
+  if (content.length === 0) return true;
+
+  let suspiciousBytes = 0;
+  for (const byte of content) {
+    if (byte === 0) return false;
+    const isCommonTextByte =
+      byte === 9 ||
+      byte === 10 ||
+      byte === 13 ||
+      (byte >= 32 && byte <= 126) ||
+      byte >= 128;
+    if (!isCommonTextByte) suspiciousBytes += 1;
+  }
+
+  return suspiciousBytes / content.length <= 0.05;
 }
 
 function fsErrorCode(err: unknown): string {
@@ -120,12 +161,6 @@ export function ingestDirectory(rootDir: string, repo_id: string, snapshotIdPara
 
         const ext = extname(ent.name).toLowerCase();
 
-        // Extension allowlist
-        if (!ALLOWED_EXTENSIONS.has(ext)) {
-          exclude(rel, `unsupported extension: ${ext}`);
-          continue;
-        }
-
         // Sensitive file type check
         if (isSensitiveFileType(ent.name)) {
           exclude(rel, "sensitive file type", "sensitive");
@@ -139,12 +174,22 @@ export function ingestDirectory(rootDir: string, repo_id: string, snapshotIdPara
           continue;
         }
 
-        let content: string;
-        try { content = readFileSync(abs, "utf-8"); }
+        let raw: Buffer;
+        try { raw = readFileSync(abs); }
         catch {
           exclude(rel, "unreadable file", "unreadable");
           continue;
         }
+
+        const hasAllowedExtension = ALLOWED_EXTENSIONS.has(ext);
+        const hasKnownTextName = isKnownTextFilename(ent.name);
+        const hasUnknownExtension = ext.length === 0 || !hasAllowedExtension;
+        if (hasUnknownExtension && !hasKnownTextName && !looksLikeText(raw.subarray(0, TEXT_SAMPLE_BYTES))) {
+          exclude(rel, `unsupported binary or non-text file: ${ext || "(no extension)"}`);
+          continue;
+        }
+
+        const content = raw.toString("utf-8");
         const lines = content.split("\n");
 
         files.push({
@@ -152,7 +197,7 @@ export function ingestDirectory(rootDir: string, repo_id: string, snapshotIdPara
           file_hash: computeFileHash(content),
           byte_count: stat.size,
           line_count: lines.length,
-          language: languageFromExt(ext),
+          language: hasAllowedExtension ? languageFromExt(ext) : "text",
           extension: ext,
           sensitive_detected: false,
           index_admitted: true,

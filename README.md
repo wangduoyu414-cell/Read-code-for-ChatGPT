@@ -38,6 +38,8 @@ Fetch app/main.ts lines 1-80.
 
 Do not ask ChatGPT to read `D:\project\file.ts` or `/Users/name/project/file.ts`. If the service was started with that project as the authorized root, ask for `file.ts` or `subdir/file.ts`.
 
+The snapshot admits common source, config, and documentation files. It also admits project text files without standard extensions, such as `Dockerfile`, `Makefile`, `LICENSE`, `.gitignore`, and unknown-extension files that pass a lightweight text check.
+
 ## Tools
 
 | Tool | Purpose |
@@ -54,7 +56,7 @@ All four tools are read-only. There is no shell execution, no write API（应用
 - absolute paths are rejected
 - `..` traversal is rejected
 - sensitive paths such as `.git`, `.env`, private keys, and credential files are rejected
-- large files and unsupported extensions are excluded
+- binary files, oversized files, and sensitive files are excluded
 - system/unreadable directories are skipped and recorded
 - response size, session budget, tool call count, and tree depth are capped
 - returned repository content is marked `content_origin=repository_snapshot` and `instruction_trust=untrusted`

@@ -25,6 +25,8 @@ ChatGPT receives four read-only tools:
 
 The server rejects absolute paths, parent traversal, sensitive files, oversized responses, unsupported files, and unreadable/system directories. Repository content is returned as untrusted data.
 
+Readable repository files include common source, config, and documentation files, plus common project text files such as `Dockerfile`, `Makefile`, `LICENSE`, `.gitignore`, and unknown-extension files that pass a lightweight text check. Binary files and sensitive files stay excluded.
+
 ## 2. Install（安装）
 
 ```powershell

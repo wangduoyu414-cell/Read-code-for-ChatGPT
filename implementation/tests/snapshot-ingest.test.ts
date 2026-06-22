@@ -10,6 +10,58 @@ function makeTempRepo(): string {
 }
 
 await describe("snapshot ingest", async () => {
+  await it("admits common extensionless project text files", () => {
+    const root = makeTempRepo();
+    try {
+      writeFileSync(join(root, "Dockerfile"), "FROM node:22\n");
+      writeFileSync(join(root, "Makefile"), "test:\n\tnode --test\n");
+      writeFileSync(join(root, "LICENSE"), "MIT\n");
+      writeFileSync(join(root, ".gitignore"), "node_modules/\n");
+
+      const { manifest } = ingestDirectory(root, "repo-test", "snap-test");
+      const paths = manifest.files.map((f) => f.relative_path).sort();
+
+      assert.deepEqual(paths, [".gitignore", "Dockerfile", "LICENSE", "Makefile"]);
+      assert.ok(manifest.files.every((f) => f.language === "text"));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  await it("admits unknown extension text files but rejects binary files", () => {
+    const root = makeTempRepo();
+    try {
+      writeFileSync(join(root, "config.local"), "feature=true\n");
+      writeFileSync(join(root, "image.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]));
+
+      const { manifest } = ingestDirectory(root, "repo-test", "snap-test");
+      const paths = manifest.files.map((f) => f.relative_path);
+
+      assert.deepEqual(paths, ["config.local"]);
+      assert.ok(manifest.excluded_files.some((f) => f.relative_path === "image.png" && f.reason.includes("non-text")));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  await it("still rejects sensitive files after text admission is widened", () => {
+    const root = makeTempRepo();
+    try {
+      writeFileSync(join(root, ".env"), "DATABASE_URL=postgres://user:pass@example/db\n");
+      writeFileSync(join(root, "id_rsa"), "-----BEGIN OPENSSH PRIVATE KEY-----\nsecret\n");
+      writeFileSync(join(root, "keep.local"), "visible=true\n");
+
+      const { manifest } = ingestDirectory(root, "repo-test", "snap-test");
+      const paths = manifest.files.map((f) => f.relative_path);
+
+      assert.deepEqual(paths, ["keep.local"]);
+      assert.ok(manifest.excluded_files.some((f) => f.relative_path === ".env" && f.reason === "sensitive file type"));
+      assert.ok(manifest.excluded_files.some((f) => f.relative_path === "id_rsa" && f.reason.includes("path rejected")));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   await it("skips Windows system directories by name", () => {
     const root = makeTempRepo();
     try {
