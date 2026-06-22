@@ -2,6 +2,96 @@
   "schema_version": "2026-06-21-design-v2",
   "tools": [
     {
+      "name": "repo.list",
+      "title": "Repository List",
+      "description": "List configured repository names and exact repository paths.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [],
+        "properties": {}
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repositories",
+          "count",
+          "policy_version",
+          "content_origin",
+          "instruction_trust",
+          "audit_id",
+          "isError",
+          "next_cursor",
+          "error_code",
+          "message",
+          "retryable"
+        ],
+        "properties": {
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/repository_entry"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "policy_version": {
+            "type": "string"
+          },
+          "content_origin": {
+            "type": "string",
+            "enum": [
+              "repository_snapshot"
+            ]
+          },
+          "instruction_trust": {
+            "type": "string",
+            "enum": [
+              "untrusted"
+            ]
+          },
+          "audit_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "isError": {
+            "type": "boolean",
+            "default": false
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retryable": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    {
       "name": "repo.search",
       "title": "Repository Search",
       "description": "Search within an authorized immutable repository snapshot and return bounded code hits with provenance.",
@@ -14,10 +104,11 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
+          "repo_path",
           "query"
         ],
         "properties": {
-          "repo_id": {
+          "repo_path": {
             "type": "string",
             "minLength": 1
           },
@@ -51,7 +142,7 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "repo_id",
+          "repo_path",
           "snapshot_id",
           "policy_version",
           "hits",
@@ -65,7 +156,7 @@
           "retryable"
         ],
         "properties": {
-          "repo_id": {
+          "repo_path": {
             "type": "string"
           },
           "snapshot_id": {
@@ -141,13 +232,14 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
+          "repo_path",
           "path",
           "line_start",
           "line_end",
           "purpose"
         ],
         "properties": {
-          "repo_id": {
+          "repo_path": {
             "type": "string",
             "minLength": 1
           },
@@ -179,7 +271,7 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "repo_id",
+          "repo_path",
           "snapshot_id",
           "path",
           "line_range",
@@ -196,7 +288,7 @@
           "retryable"
         ],
         "properties": {
-          "repo_id": {
+          "repo_path": {
             "type": "string"
           },
           "snapshot_id": {
@@ -278,9 +370,11 @@
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "required": [],
+        "required": [
+          "repo_path"
+        ],
         "properties": {
-          "repo_id": {
+          "repo_path": {
             "type": "string",
             "minLength": 1
           },
@@ -310,7 +404,7 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "repo_id",
+          "repo_path",
           "snapshot_id",
           "entries",
           "policy_version",
@@ -324,7 +418,7 @@
           "retryable"
         ],
         "properties": {
-          "repo_id": {
+          "repo_path": {
             "type": "string"
           },
           "snapshot_id": {
@@ -400,10 +494,11 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
+          "repo_path",
           "query"
         ],
         "properties": {
-          "repo_id": {
+          "repo_path": {
             "type": "string",
             "minLength": 1
           },
@@ -431,7 +526,7 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "repo_id",
+          "repo_path",
           "snapshot_id",
           "symbols",
           "policy_version",
@@ -445,7 +540,7 @@
           "retryable"
         ],
         "properties": {
-          "repo_id": {
+          "repo_path": {
             "type": "string"
           },
           "snapshot_id": {
@@ -520,9 +615,11 @@
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "required": [],
+        "required": [
+          "repo_path"
+        ],
         "properties": {
-          "repo_id": {
+          "repo_path": {
             "type": "string",
             "minLength": 1
           },
@@ -541,7 +638,7 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "repo_id",
+          "repo_path",
           "snapshot_id",
           "previous_snapshot_id",
           "refreshed",
@@ -562,7 +659,7 @@
           "retryable"
         ],
         "properties": {
-          "repo_id": {
+          "repo_path": {
             "type": "string"
           },
           "snapshot_id": {
@@ -648,6 +745,29 @@
     }
   ],
   "$defs": {
+    "repository_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "repo_path",
+        "snapshot_id"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "snapshot_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "line_range": {
       "type": "object",
       "additionalProperties": false,
@@ -768,7 +888,7 @@
         "isError",
         "error_code",
         "message",
-        "repo_id",
+        "repo_path",
         "snapshot_id",
         "policy_version",
         "audit_id",
@@ -785,7 +905,7 @@
         "message": {
           "type": "string"
         },
-        "repo_id": {
+        "repo_path": {
           "type": "string"
         },
         "snapshot_id": {

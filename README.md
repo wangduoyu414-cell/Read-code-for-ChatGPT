@@ -2,7 +2,7 @@
 
 让 ChatGPT read your local repository, but only through a narrow, read-only, auditable MCP gate.
 
-`Read code for ChatGPT` is a local MCP（Model Context Protocol，模型上下文协议）server that turns an authorized repository folder into bounded tools ChatGPT can call: tree, search, fetch, symbols, and refresh. It is built for people who want ChatGPT to understand a real codebase without pasting files into the chat window.
+`Read code for ChatGPT` is a local MCP（Model Context Protocol，模型上下文协议）server that turns authorized repository folders into bounded tools ChatGPT can call: list, tree, search, fetch, symbols, and refresh. It is built for people who want ChatGPT to understand real codebases without pasting files into the chat window.
 
 ![Add read code to ChatGPT](docs/assets/chatgpt-connect-modal.svg)
 
@@ -12,31 +12,42 @@
 
 ChatGPT is good at reasoning, but a repository is not a single prompt. This project gives it a small set of safe eyes:
 
-- browse the authorized file tree
+- list the exact configured repository paths
+- browse an authorized file tree
 - search code and docs
 - fetch bounded line ranges
 - find lightweight symbol definitions
 
-The design goal is not "give the model my whole disk". The design goal is: **grant one folder, expose bounded non-destructive tools, mark all repository content as untrusted, and keep server-side limits in charge.**
+The design goal is not "give the model my whole disk". The design goal is: **grant explicitly configured folders, expose bounded non-destructive tools, mark all repository content as untrusted, and keep server-side limits in charge.**
 
 ## What It Can Read
 
-At startup you choose exactly one authorized root:
+At startup you choose one or more authorized roots. For a single repository:
 
 ```powershell
 node dist/startup.js --port 3100 --repo "<authorized-repo-path>"
 ```
 
-Inside ChatGPT, paths are relative to that root:
+For multiple repositories, configure `implementation/server.config.json`:
 
-```text
-List the repository tree.
-Read docs/README.md.
-Search for createApp.
-Fetch app/main.ts lines 1-80.
+```json
+{
+  "repos": [
+    { "name": "app", "path": "D:\\projects\\app" },
+    { "name": "library", "path": "D:\\projects\\library" }
+  ]
+}
 ```
 
-Do not ask ChatGPT to read `D:\project\file.ts` or `/Users/name/project/file.ts`. If the service was started with that project as the authorized root, ask for `file.ts` or `subdir/file.ts`.
+Inside ChatGPT, call `repo.list` first. It returns each configured `name`, exact `repo_path`, and current `snapshot_id`. Use `repo_path` only to choose the repository; file paths inside `repo.tree`, `repo.search`, `repo.fetch`, `repo.symbols`, and `repo.refresh` remain repository-relative:
+
+```text
+List configured repositories, then read the tree for repo_path D:\projects\app.
+Search repo_path D:\projects\app for createApp.
+Fetch app/main.ts lines 1-80 from repo_path D:\projects\app.
+```
+
+Do not put `D:\project\file.ts` or `/Users/name/project/file.ts` into the tool's file `path` argument. The absolute path belongs in `repo_path`; the file path should be `file.ts` or `subdir/file.ts`.
 
 The snapshot admits common source, config, and documentation files. It also admits project text files without standard extensions, such as `Dockerfile`, `Makefile`, `LICENSE`, `.gitignore`, and unknown-extension files that pass a lightweight text check.
 
@@ -46,6 +57,7 @@ The repository view is snapshot-based. If files change after startup, ask ChatGP
 
 | Tool | Purpose |
 |---|---|
+| `repo.list` | List configured repository names and exact `repo_path` values. |
 | `repo.tree` | List a bounded directory tree. |
 | `repo.search` | Search indexed text snippets. |
 | `repo.fetch` | Fetch a bounded line segment from one file. |
@@ -63,6 +75,7 @@ All tools are non-destructive for your repository. `repo.refresh` updates only t
 - system/unreadable directories are skipped and recorded
 - response size, session budget, tool call count, and tree depth are capped
 - returned repository content is marked `content_origin=repository_snapshot` and `instruction_trust=untrusted`
+- ChatGPT must choose from the configured `repo_path` whitelist; arbitrary paths are rejected
 
 More detail: [docs/SECURITY.md](docs/SECURITY.md).
 
@@ -139,6 +152,7 @@ Implemented:
 - Streamable HTTP MCP server
 - read-only tool registry
 - repository snapshot manifest
+- multi-repository `repo_path` selection through `repo.list`
 - text and symbol indexing
 - on-demand snapshot refresh with old-snapshot fallback on failure
 - path guard, redaction, budgets, and audit ids

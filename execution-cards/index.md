@@ -1,13 +1,13 @@
 # CHATGPT-LOCAL-REPO-001 Execution Cards（执行任务卡索引）
 
-状态：implementation_complete_with_exec013_doc_preconnect（实现已完成，并补充文档归类与接入前链路复验）。
+状态：implementation_complete_with_multirepo_path_selection（实现已完成，并补充多仓库 `repo_path` 白名单选择）。
 
 本目录把 `docs/design/task-card.md` 的设计拆成可执行任务卡。执行前必须先确认执行根目录：
 
 - 默认执行根目录：`<repo-root>/implementation`
 - 技术栈默认：`Node.js`（节点运行时） + `TypeScript`（类型脚本） + 官方 `@modelcontextprotocol/sdk`（模型上下文协议官方开发包）。
 - 第一版决策：无 `UI widget`（界面小组件），仅数据工具。
-- 第一版范围：单用户、单仓库、单只读快照。
+- 当前实现范围：单用户、多仓库白名单、只读快照；ChatGPT（聊天模型）先调用 `repo.list`，再把精确 `repo_path`（仓库路径）传给读取工具。
 
 ## 执行顺序
 

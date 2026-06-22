@@ -16,6 +16,7 @@ import { attachManifest, requestSnapshot, transitionState } from "./snapshot-reg
 
 interface RefreshSnapshotParams {
   repo_id: string;
+  repo_path: string;
   current_snapshot_id: string;
   rootDir: string;
   budget: BudgetState;
@@ -145,7 +146,7 @@ export async function refreshRepositorySnapshot(params: RefreshSnapshotParams): 
     }
 
     const response = wrapRepositoryContent({
-      repo_id: params.repo_id,
+      repo_path: params.repo_path,
       previous_snapshot_id: params.current_snapshot_id,
       snapshot_id: nextSnapshotId,
       refreshed: true,

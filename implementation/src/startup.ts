@@ -5,14 +5,16 @@
  *   node dist/startup.js                    # uses server.config.json
  *   node dist/startup.js --port 3101        # override port
  *   node dist/startup.js --repo ./my-repo   # override repo path
+ *   node dist/startup.js --repo-name app    # optional name for --repo
  *
  * The server stays running until terminated (Ctrl+C / SIGTERM).
  */
 
 import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 import { startServer, initRuntime } from "./server.js";
-import { registerRepo, bindRepo } from "./repo/repo-catalog.js";
+import { registerRepo, bindRepo, clearCatalog, normalizeRepoRootPath } from "./repo/repo-catalog.js";
 import { requestSnapshot, transitionState, attachManifest, clearRegistry } from "./snapshot/snapshot-registry.js";
 import { ingestDirectory } from "./snapshot/snapshot-ingest.js";
 import { runIndexer } from "./indexer/indexer.js";
@@ -23,8 +25,13 @@ import { clearSymbolIndex } from "./indexer/symbol-index.js";
 
 interface StartupConfig {
   server: { port: number; host: string };
-  repo: { path: string; description?: string };
+  repo?: { path: string; description?: string; name?: string };
+  repos: Array<{ name: string; path: string; description?: string }>;
   snapshot: { autoCreate: boolean; expireHours: number };
+}
+
+function repoNameFromPath(repoPath: string): string {
+  return basename(normalizeRepoRootPath(repoPath)) || "repository";
 }
 
 function parseArgs(): Record<string, string> {
@@ -45,16 +52,26 @@ function loadConfig(cliArgs: Record<string, string>): StartupConfig {
   const configPath = resolve(cliArgs["config"] ?? "server.config.json");
   const defaults: StartupConfig = {
     server: { port: 3100, host: "127.0.0.1" },
-    repo: { path: "./fixtures/safe-repo" },
+    repos: [{ name: "safe-repo", path: "./fixtures/safe-repo" }],
     snapshot: { autoCreate: true, expireHours: 24 },
   };
 
   if (existsSync(configPath)) {
     try {
       const file = JSON.parse(readFileSync(configPath, "utf-8"));
+      const repos = Array.isArray(file.repos)
+        ? file.repos.map((repo: { name?: string; path: string; description?: string }) => ({
+          name: repo.name ?? repoNameFromPath(repo.path),
+          path: repo.path,
+          description: repo.description,
+        }))
+        : file.repo
+          ? [{ name: file.repo.name ?? repoNameFromPath(file.repo.path), path: file.repo.path, description: file.repo.description }]
+          : defaults.repos;
       return {
         server: { ...defaults.server, ...file.server },
-        repo: { ...defaults.repo, ...file.repo },
+        repo: file.repo,
+        repos,
         snapshot: { ...defaults.snapshot, ...file.snapshot },
       };
     } catch (e) {
@@ -67,26 +84,29 @@ function loadConfig(cliArgs: Record<string, string>): StartupConfig {
 
 // ─── Runtime initialization ──────────────────────────────────────────────────
 
-function initRepoAndSnapshot(config: StartupConfig): { manifest: unknown; rootDir: string; snapshotId: string } | null {
-  const rootDir = resolve(config.repo.path);
+interface InitializedRepo {
+  manifest: unknown;
+  rootDir: string;
+  repoPath: string;
+  repoName: string;
+  snapshotId: string;
+}
+
+function initRepoAndSnapshot(repoConfig: { name: string; path: string; description?: string }): InitializedRepo | null {
+  const rootDir = normalizeRepoRootPath(repoConfig.path);
 
   if (!existsSync(rootDir)) {
     console.error(JSON.stringify({ event: "repo_not_found", path: rootDir }));
     return null;
   }
 
-  // Clear previous state
-  clearRegistry();
-  clearTextIndex();
-  clearSymbolIndex();
-
   // Repo binding
-  const repo = registerRepo(rootDir, config.repo.description);
+  const repo = registerRepo(rootDir, { name: repoConfig.name, description: repoConfig.description });
   bindRepo(repo.repo_id);
-  console.log(JSON.stringify({ event: "repo_bound", repo_id: repo.repo_id, path: rootDir }));
+  console.log(JSON.stringify({ event: "repo_bound", repo_id: repo.repo_id, name: repoConfig.name, path: rootDir }));
 
   // Snapshot lifecycle
-  const snapId = `snap-${Date.now()}`;
+  const snapId = `snap-${Date.now()}-${randomUUID().slice(0, 8)}`;
   requestSnapshot(snapId, repo.repo_id);
   transitionState(snapId, "manifest_building");
   transitionState(snapId, "filtering");
@@ -106,13 +126,10 @@ function initRepoAndSnapshot(config: StartupConfig): { manifest: unknown; rootDi
   }));
 
   // Index
-  const indexResult = runIndexer(manifest, rootDir);
+  const indexResult = runIndexer(manifest, rootDir, { clearExisting: false });
   console.log(JSON.stringify({ event: "index_complete", ...indexResult }));
 
-  // Init runtime (wires manifest + budget state into server)
-  initRuntime({ manifest, rootDir, snapshotId: snapId });
-
-  return { manifest, rootDir, snapshotId: snapId };
+  return { manifest, rootDir, repoPath: repo.repo_path, repoName: repoConfig.name, snapshotId: snapId };
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -124,16 +141,48 @@ async function main() {
   // CLI overrides
   if (cliArgs["port"]) config.server.port = Number(cliArgs["port"]);
   if (cliArgs["host"]) config.server.host = cliArgs["host"];
-  if (cliArgs["repo"]) config.repo.path = cliArgs["repo"];
+  if (cliArgs["repo"]) {
+    config.repos = [{
+      name: cliArgs["repo-name"] ?? repoNameFromPath(cliArgs["repo"]),
+      path: cliArgs["repo"],
+      description: "CLI-selected repository",
+    }];
+  }
 
-  console.log(JSON.stringify({ event: "startup_begin", config: { port: config.server.port, repo: config.repo.path } }));
+  console.log(JSON.stringify({
+    event: "startup_begin",
+    config: {
+      port: config.server.port,
+      repos: config.repos.map((repo) => ({ name: repo.name, path: repo.path })),
+    },
+  }));
 
-  // Initialize repo, snapshot, index, runtime
-  const initResult = initRepoAndSnapshot(config);
-  if (!initResult) {
+  clearCatalog();
+  clearRegistry();
+  clearTextIndex();
+  clearSymbolIndex();
+
+  const initResults: InitializedRepo[] = [];
+  for (const repoConfig of config.repos) {
+    const initResult = initRepoAndSnapshot(repoConfig);
+    if (initResult) initResults.push(initResult);
+  }
+
+  if (initResults.length === 0) {
     console.error(JSON.stringify({ event: "startup_failed", reason: "repo initialization failed" }));
     process.exit(1);
   }
+
+  // Init runtime (wires manifests + budget states into server)
+  initRuntime({
+    repositories: initResults.map((repo) => ({
+      manifest: repo.manifest,
+      rootDir: repo.rootDir,
+      repoPath: repo.repoPath,
+      repoName: repo.repoName,
+      snapshotId: repo.snapshotId,
+    })),
+  });
 
   // Start the persistent server
   const port = config.server.port as number;
@@ -143,13 +192,15 @@ async function main() {
     event: "server_listening",
     url,
     port: config.server.port,
-    snapshot_id: initResult.snapshotId,
+    repositories: initResults.map((repo) => ({ name: repo.repoName, repo_path: repo.repoPath, snapshot_id: repo.snapshotId })),
     status: "ready",
   }));
 
   console.log(`\n✅ MCP Server is running at ${url}`);
-  console.log(`   Snapshot: ${initResult.snapshotId}`);
-  console.log(`   Repo:     ${config.repo.path}`);
+  for (const repo of initResults) {
+    console.log(`   Repo:     ${repo.repoName} -> ${repo.repoPath}`);
+    console.log(`   Snapshot: ${repo.snapshotId}`);
+  }
   console.log(`   Press Ctrl+C to stop.\n`);
 
   // ─── Graceful shutdown ──────────────────────────────────────────────────

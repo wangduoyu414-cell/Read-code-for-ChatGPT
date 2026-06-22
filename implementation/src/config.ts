@@ -18,6 +18,13 @@ export const CONFIG = {
     destructiveHint: false as const,
     openWorldHint: false as const,
 
+    list: {
+      name: "repo.list" as const,
+      title: "Repository List",
+      description:
+        "List configured repository names and exact repository paths. Use repo_path from this list when calling repository read tools.",
+    },
+
     search: {
       name: "repo.search" as const,
       title: "Repository Search",

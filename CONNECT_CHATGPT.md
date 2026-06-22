@@ -1,6 +1,6 @@
 # Connect To ChatGPT（接入 ChatGPT）
 
-This guide explains how to run `Read code for ChatGPT` locally, authorize one repository folder, and connect it to ChatGPT through MCP（Model Context Protocol，模型上下文协议）.
+This guide explains how to run `Read code for ChatGPT` locally, authorize one or more repository folders, and connect them to ChatGPT through MCP（Model Context Protocol，模型上下文协议）.
 
 The current project mode is `dev_local`（本地开发）. It is ready for local validation and private connector testing, but production OAuth 2.1/OIDC（开放授权/开放身份连接）is not implemented yet.
 
@@ -8,7 +8,8 @@ The current project mode is `dev_local`（本地开发）. It is ready for local
 
 - `<repo-root>`: this repository root, containing `README.md`, `CONNECT_CHATGPT.md`, and `tool-schemas.json`.
 - `<implementation-root>`: `<repo-root>/implementation`.
-- `<authorized-repo-path>`: the local folder you explicitly allow ChatGPT to read.
+- `<authorized-repo-path>`: one local folder you explicitly allow ChatGPT to read.
+- `<repo_path>`: the exact authorized repository path returned by `repo.list`.
 - MCP endpoint（模型上下文协议端点）: `http://127.0.0.1:3100/mcp` during local development.
 - Tunnel（隧道）: an HTTPS（安全超文本传输协议）route that lets ChatGPT reach your local MCP endpoint.
 
@@ -18,6 +19,7 @@ ChatGPT receives bounded, non-destructive tools:
 
 | Tool | What it does |
 |---|---|
+| `repo.list` | List configured repository names and exact `repo_path` values. |
 | `repo.tree` | List bounded repository paths. |
 | `repo.search` | Search indexed text. |
 | `repo.fetch` | Read a bounded line range from one file. |
@@ -28,7 +30,9 @@ The server rejects absolute paths, parent traversal, sensitive files, oversized 
 
 Readable repository files include common source, config, and documentation files, plus common project text files such as `Dockerfile`, `Makefile`, `LICENSE`, `.gitignore`, and unknown-extension files that pass a lightweight text check. Binary files and sensitive files stay excluded.
 
-The repository view is snapshot-based. New or changed files are visible after ChatGPT calls `repo.refresh`; failed refreshes keep the previous snapshot active.
+ChatGPT must call `repo.list` before reading, then pass one returned `repo_path` to every repository tool. File paths inside a selected repository stay relative, such as `src/index.ts`.
+
+The repository view is snapshot-based. New or changed files are visible after ChatGPT calls `repo.refresh` with the chosen `repo_path`; failed refreshes keep the previous snapshot active.
 
 ## 2. Install（安装）
 
@@ -95,17 +99,28 @@ node dist/startup.js --port 3100 --repo "/Users/me/projects/my-app"
 
 Avoid binding a whole drive unless you understand the privacy and indexing cost.
 
-Inside ChatGPT, ask for relative paths:
+For multiple repositories, edit `<implementation-root>/server.config.json`:
 
-```text
-List the repository tree.
-Read docs/README.md.
-Search for ConfigLoader.
-Fetch src/index.ts lines 1-100.
-Refresh the repository snapshot, then search for the latest changed file.
+```json
+{
+  "repos": [
+    { "name": "app", "path": "D:\\projects\\app" },
+    { "name": "library", "path": "D:\\projects\\library" }
+  ]
+}
 ```
 
-Do not ask ChatGPT to read absolute paths. The server will reject them.
+Inside ChatGPT, ask it to list repositories first, then use the exact `repo_path`:
+
+```text
+Call repo.list, then list the tree for repo_path D:\projects\app.
+Read docs/README.md from repo_path D:\projects\app.
+Search repo_path D:\projects\app for ConfigLoader.
+Fetch src/index.ts lines 1-100 from repo_path D:\projects\app.
+Refresh repo_path D:\projects\app, then search for the latest changed file.
+```
+
+Use absolute paths only as `repo_path`. The file `path` argument must stay relative to that repository; `repo.fetch` will reject absolute file paths.
 
 ## 6. Local MCP Protocol Check（本地协议验证）
 
@@ -120,9 +135,11 @@ const client = new Client({ name: 'local-verifier', version: '0.0.1' });
 const transport = new StreamableHTTPClientTransport(new URL('http://127.0.0.1:3100/mcp'));
 await client.connect(transport);
 const tools = await client.listTools();
-const tree = await client.callTool({ name: 'repo.tree', arguments: { path: '.', depth: 1, limit: 10 } });
+const listed = await client.callTool({ name: 'repo.list', arguments: {} });
+const repoPath = listed.structuredContent.repositories[0].repo_path;
+const tree = await client.callTool({ name: 'repo.tree', arguments: { repo_path: repoPath, path: '.', depth: 1, limit: 10 } });
 await client.close();
-console.log(JSON.stringify({ tools: tools.tools.map((t) => t.name), tree: tree.structuredContent }, null, 2));
+console.log(JSON.stringify({ tools: tools.tools.map((t) => t.name), repositories: listed.structuredContent.repositories, tree: tree.structuredContent }, null, 2));
 '@
 
 node --input-type=module -e $script
@@ -131,6 +148,7 @@ node --input-type=module -e $script
 Expected tools:
 
 ```text
+repo.list
 repo.search
 repo.fetch
 repo.tree
@@ -180,7 +198,7 @@ Get-CimInstance Win32_Process -Filter "name = 'node.exe'" |
 |---|---|
 | ChatGPT cannot reach `127.0.0.1` | Use Secure MCP Tunnel or another HTTPS route. |
 | OAuth setup fails | Current mode is `dev_local`; choose `No Authentication` for local testing. |
-| `repo.tree` rejects `D:\...` | Use relative paths inside ChatGPT. |
+| `repo.fetch` rejects `D:\...\file.ts` | Use `D:\...` only as `repo_path`; use a relative file `path` such as `src/index.ts`. |
 | Full drive scan is slow | Bind a specific project folder instead of `D:\` or `/`. |
 | Port `3100` is busy | Start with `--port 3101` and update tunnel target. |
 | New files do not appear | Ask ChatGPT to call `repo.refresh`, then search or list the tree again. |

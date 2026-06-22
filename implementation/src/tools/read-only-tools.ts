@@ -39,7 +39,7 @@ function normalizeTreePrefix(
 // ─── repo.search ─────────────────────────────────────────────────────────────
 
 export async function repoSearcher(
-  args: { repo_id: string; snapshot_id: string; query: string; mode?: string; limit?: number },
+  args: { repo_id: string; repo_path: string; snapshot_id: string; query: string; mode?: string; limit?: number },
   _manifest: SnapshotManifest,
   _rootDir: string,
   budget: BudgetState,
@@ -63,7 +63,7 @@ export async function repoSearcher(
 
   const truncated = hits.length >= limit;
   const response = wrapRepositoryContent({
-    repo_id: ctx.repo_id,
+    repo_path: args.repo_path,
     snapshot_id: ctx.snapshot_id,
     hits: hits.map((h) => {
       const sanitized = sanitizeContent(h.snippet, CONFIG.budget.singleResponseMaxBytes);
@@ -87,7 +87,7 @@ export async function repoSearcher(
 // ─── repo.fetch ──────────────────────────────────────────────────────────────
 
 export async function repoFetcher(
-  args: { repo_id: string; snapshot_id: string; path: string; line_start: number; line_end: number; purpose: string },
+  args: { repo_id: string; repo_path: string; snapshot_id: string; path: string; line_start: number; line_end: number; purpose: string },
   manifest: SnapshotManifest,
   rootDir: string,
   budget: BudgetState,
@@ -136,7 +136,7 @@ export async function repoFetcher(
   if (!gb.allowed) return gb.error!;
 
   return wrapRepositoryContent({
-    repo_id: ctx.repo_id,
+    repo_path: args.repo_path,
     snapshot_id: ctx.snapshot_id,
     path: pathCheck.normalized,
     line_range: { start: lineStart, end: lineEnd },
@@ -149,7 +149,7 @@ export async function repoFetcher(
 // ─── repo.tree ───────────────────────────────────────────────────────────────
 
 export async function repoTreer(
-  args: { repo_id: string; snapshot_id: string; path?: string; depth?: number; limit?: number },
+  args: { repo_id: string; repo_path: string; snapshot_id: string; path?: string; depth?: number; limit?: number },
   manifest: SnapshotManifest,
   _budget: BudgetState,
 ) {
@@ -184,7 +184,7 @@ export async function repoTreer(
   const truncated = entries.length >= limit;
 
   return wrapRepositoryContent({
-    repo_id: ctx.repo_id,
+    repo_path: args.repo_path,
     snapshot_id: ctx.snapshot_id,
     entries,
     truncated,
@@ -194,7 +194,7 @@ export async function repoTreer(
 // ─── repo.symbols ────────────────────────────────────────────────────────────
 
 export async function repoSymbols(
-  args: { repo_id: string; snapshot_id: string; query: string; language?: string; limit?: number },
+  args: { repo_id: string; repo_path: string; snapshot_id: string; query: string; language?: string; limit?: number },
   _manifest: SnapshotManifest,
   _budget: BudgetState,
 ) {
@@ -212,7 +212,7 @@ export async function repoSymbols(
   const truncated = symbols.length >= limit;
 
   return wrapRepositoryContent({
-    repo_id: ctx.repo_id,
+    repo_path: args.repo_path,
     snapshot_id: ctx.snapshot_id,
     symbols,
     truncated,

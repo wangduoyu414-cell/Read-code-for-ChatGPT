@@ -5,29 +5,36 @@
 
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { getToolRegistrations, isRegisteredTool, handleToolCall, setRuntimeState, getRuntimeState } from "../src/tools/registry.js";
+import { getToolRegistrations, isRegisteredTool, handleToolCall, setRuntimeState } from "../src/tools/registry.js";
 import { isToolError } from "../src/errors.js";
 import { CONFIG } from "../src/config.js";
 import { createBudgetState } from "../src/security/budget.js";
 import { startServer } from "../src/server.js";
 import { requestSnapshot, transitionState, attachManifest, clearRegistry } from "../src/snapshot/snapshot-registry.js";
+import { registerRepo, bindRepo, clearCatalog, normalizeRepoRootPath } from "../src/repo/repo-catalog.js";
 
 beforeEach(() => {
+  clearCatalog();
   clearRegistry();
+  const repoPath = normalizeRepoRootPath("C:\\Example\\Repo");
+  const repo = registerRepo(repoPath, { name: "example-repo" });
+  bindRepo(repo.repo_id);
   const manifest = {
     snapshot_id: "snap-test",
-    repo_id: "r1",
+    repo_id: repo.repo_id,
     files: [],
     excluded_files: [],
     policy_version: CONFIG.policyVersion,
   } as unknown as Parameters<typeof attachManifest>[1];
-  requestSnapshot("snap-test", "r1");
+  requestSnapshot("snap-test", repo.repo_id);
   transitionState("snap-test", "manifest_building");
   transitionState("snap-test", "filtering");
   attachManifest("snap-test", manifest);
   setRuntimeState({
     manifest,
     rootDir: ".",
+    repoPath,
+    repoName: "example-repo",
     budgetState: createBudgetState(),
     sessionSnapshotId: "snap-test",
   } as Parameters<typeof setRuntimeState>[0]);
@@ -35,7 +42,8 @@ beforeEach(() => {
 
 await describe("Tool Registry", async () => {
   const tools = getToolRegistrations();
-  await it("registers exactly five tools", () => assert.equal(tools.length, 5));
+  await it("registers exactly six tools", () => assert.equal(tools.length, 6));
+  await it("registers repo.list", () => assert.equal(isRegisteredTool("repo.list"), true));
   await it("registers repo.search", () => assert.equal(isRegisteredTool("repo.search"), true));
   await it("registers repo.fetch", () => assert.equal(isRegisteredTool("repo.fetch"), true));
   await it("registers repo.tree", () => assert.equal(isRegisteredTool("repo.tree"), true));
@@ -58,29 +66,55 @@ await describe("Tool Annotations", async () => {
 
 await describe("Tool Dispatch (with runtime)", async () => {
   await it("rejects unknown tool", async () => {
-    const r = await handleToolCall("repo.write", { repo_id: "r1", snapshot_id: "snap-test" }, "audit-005");
+    const r = await handleToolCall("repo.write", { repo_path: "C:\\Example\\Repo", snapshot_id: "snap-test" }, "audit-005");
     assert.equal(isToolError(r), true);
     if (isToolError(r)) assert.equal(r.error_code, "access_denied");
   });
 
-  await it("defaults missing repo_id and snapshot_id to the initialized runtime context", async () => {
-    const r = await handleToolCall("repo.tree", { path: ".", depth: 1, limit: 5 }, "audit-default-context");
+  await it("lists configured repositories with exact repo_path values", async () => {
+    const r = await handleToolCall("repo.list", {}, "audit-list");
     assert.equal(isToolError(r), false);
-    assert.equal((r as Record<string, unknown>).repo_id, "r1");
-    assert.equal((r as Record<string, unknown>).snapshot_id, "snap-test");
+    const data = r as { repositories: Array<{ name: string; repo_path: string; snapshot_id: string }> };
+    assert.equal(data.repositories.length, 1);
+    assert.equal(data.repositories[0]?.name, "example-repo");
+    assert.equal(data.repositories[0]?.repo_path, normalizeRepoRootPath("C:\\Example\\Repo"));
+    assert.equal(data.repositories[0]?.snapshot_id, "snap-test");
   });
 
-  await it("rejects explicit repo_id mismatch", async () => {
-    const r = await handleToolCall("repo.tree", { repo_id: "other", snapshot_id: "snap-test", path: "." }, "audit-repo-mismatch");
+  await it("requires repo_path for repository tools", async () => {
+    const r = await handleToolCall("repo.tree", { path: ".", depth: 1, limit: 5 }, "audit-default-context");
     assert.equal(isToolError(r), true);
     if (isToolError(r)) {
       assert.equal(r.error_code, "access_denied");
-      assert.equal(r.repo_id, "other");
+      assert.match(r.message, /repo_path/);
+      assert.equal("repo_id" in r, false);
+      assert.equal(r.repo_path, "unknown");
+    }
+  });
+
+  await it("does not expose repo_id on unknown tool errors", async () => {
+    const r = await handleToolCall("repo.write", {}, "audit-unknown-no-path");
+    assert.equal(isToolError(r), true);
+    if (isToolError(r)) assert.equal("repo_id" in r, false);
+  });
+
+  await it("uses repo_path to select the initialized runtime context", async () => {
+    const r = await handleToolCall("repo.tree", { repo_path: "C:/Example/Repo/", path: ".", depth: 1, limit: 5 }, "audit-repo-path");
+    assert.equal(isToolError(r), false);
+    assert.equal((r as Record<string, unknown>).repo_path, normalizeRepoRootPath("C:\\Example\\Repo"));
+    assert.equal((r as Record<string, unknown>).snapshot_id, "snap-test");
+  });
+
+  await it("rejects repo_path outside the configured whitelist", async () => {
+    const r = await handleToolCall("repo.tree", { repo_path: "C:\\Other\\Repo", snapshot_id: "snap-test", path: "." }, "audit-repo-mismatch");
+    assert.equal(isToolError(r), true);
+    if (isToolError(r)) {
+      assert.equal(r.error_code, "access_denied");
     }
   });
 
   await it("rejects snapshot mismatch across tools", async () => {
-    const r = await handleToolCall("repo.search", { repo_id: "r1", snapshot_id: "snap-other", query: "test" }, "audit-006");
+    const r = await handleToolCall("repo.search", { repo_path: "C:\\Example\\Repo", snapshot_id: "snap-other", query: "test" }, "audit-006");
     assert.equal(isToolError(r), true);
   });
 });

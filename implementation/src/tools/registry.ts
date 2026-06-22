@@ -11,16 +11,19 @@ import { authorizeToolCall, authDeniedResponse } from "../policy/policy-engine.j
 import { createBudgetState } from "../security/budget.js";
 import type { SnapshotManifest } from "../snapshot/manifest.js";
 import { refreshRepositorySnapshot } from "../snapshot/refresh.js";
+import { normalizeRepoRootPath, repoPathCompareKey } from "../repo/repo-catalog.js";
 // Real tool implementations
 import { repoSearcher, repoFetcher, repoTreer, repoSymbols } from "./read-only-tools.js";
 
 // ─── Zod input schemas ──────────────────────────────────────────────────────
 
-const repoSchema = z.string().min(1).optional();
+const repoPathSchema = z.string().min(1);
 const snapshotSchema = z.string().min(1).optional();
 
+const listInputSchema = z.object({});
+
 const searchInputSchema = z.object({
-  repo_id: repoSchema,
+  repo_path: repoPathSchema,
   snapshot_id: snapshotSchema,
   query: z.string().min(1).max(CONFIG.tools.search.queryMaxLength),
   mode: z.enum(["text", "symbol", "hybrid"]).default("text"),
@@ -28,7 +31,7 @@ const searchInputSchema = z.object({
 });
 
 const fetchInputSchema = z.object({
-  repo_id: repoSchema,
+  repo_path: repoPathSchema,
   snapshot_id: snapshotSchema,
   path: z.string().min(1).max(CONFIG.tools.fetch.pathMaxLength),
   line_start: z.number().int().min(1),
@@ -37,7 +40,7 @@ const fetchInputSchema = z.object({
 });
 
 const treeInputSchema = z.object({
-  repo_id: repoSchema,
+  repo_path: repoPathSchema,
   snapshot_id: snapshotSchema,
   path: z.string().default("."),
   depth: z.number().int().min(0).max(CONFIG.tools.tree.maxDepth).default(CONFIG.tools.tree.defaultDepth),
@@ -45,7 +48,7 @@ const treeInputSchema = z.object({
 });
 
 const symbolsInputSchema = z.object({
-  repo_id: repoSchema,
+  repo_path: repoPathSchema,
   snapshot_id: snapshotSchema,
   query: z.string().min(1).max(CONFIG.tools.symbols.queryMaxLength),
   language: z.string().optional(),
@@ -53,7 +56,7 @@ const symbolsInputSchema = z.object({
 });
 
 const refreshInputSchema = z.object({
-  repo_id: repoSchema,
+  repo_path: repoPathSchema,
   snapshot_id: snapshotSchema,
   reason: z.string().min(1).max(CONFIG.tools.refresh.reasonMaxLength).optional(),
 });
@@ -73,6 +76,17 @@ export interface ToolRegistration {
 }
 
 const TOOL_REGISTRATIONS: ToolRegistration[] = [
+  {
+    name: CONFIG.tools.list.name,
+    title: CONFIG.tools.list.title,
+    description: CONFIG.tools.list.description,
+    inputSchema: listInputSchema,
+    annotations: {
+      readOnlyHint: CONFIG.tools.readOnlyHint,
+      destructiveHint: CONFIG.tools.destructiveHint,
+      openWorldHint: CONFIG.tools.openWorldHint,
+    },
+  },
   {
     name: CONFIG.tools.search.name,
     title: CONFIG.tools.search.title,
@@ -149,34 +163,55 @@ export function isRegisteredTool(name: string): boolean {
 export interface RuntimeState {
   manifest: unknown;
   rootDir: string;
+  repoPath: string;
+  repoName?: string;
   budgetState: ReturnType<typeof createBudgetState>;
   sessionSnapshotId: string; // enforces cross-tool snapshot consistency (SNAP-002)
 }
 
 let runtimeState: RuntimeState | null = null;
+const runtimeStatesByPath = new Map<string, RuntimeState>();
 
 export function setRuntimeState(state: RuntimeState): void {
   runtimeState = state;
+  runtimeStatesByPath.clear();
+  runtimeStatesByPath.set(repoPathCompareKey(state.repoPath), state);
+}
+
+export function setRuntimeStates(states: RuntimeState[]): void {
+  runtimeState = states[0] ?? null;
+  runtimeStatesByPath.clear();
+  for (const state of states) {
+    runtimeStatesByPath.set(repoPathCompareKey(state.repoPath), state);
+  }
 }
 
 export function getRuntimeState(): RuntimeState | null {
   return runtimeState;
 }
 
-function publishRuntimeSnapshot(manifest: SnapshotManifest, snapshotId: string): void {
-  const state = runtimeState;
+export function getRuntimeStates(): RuntimeState[] {
+  return Array.from(runtimeStatesByPath.values());
+}
+
+function publishRuntimeSnapshot(repoPath: string, manifest: SnapshotManifest, snapshotId: string): void {
+  const state = runtimeStatesByPath.get(repoPathCompareKey(repoPath));
   if (!state) return;
-  runtimeState = {
+  const nextState = {
     ...state,
     manifest,
     sessionSnapshotId: snapshotId,
   };
+  runtimeStatesByPath.set(repoPathCompareKey(repoPath), nextState);
+  if (runtimeState?.repoPath === state.repoPath) {
+    runtimeState = nextState;
+  }
 }
 
 // ─── Tool dispatch ───────────────────────────────────────────────────────────
 
 export interface ToolCallArgs {
-  repo_id?: string;
+  repo_path?: string;
   snapshot_id?: string;
   grant_id?: string;
   token?: string;
@@ -185,6 +220,7 @@ export interface ToolCallArgs {
 
 type ResolvedToolCallArgs = ToolCallArgs & {
   repo_id: string;
+  repo_path: string;
   snapshot_id: string;
 };
 
@@ -201,7 +237,7 @@ function getManifestRepoId(manifest: unknown): string | undefined {
   return typeof repoId === "string" && repoId.length > 0 ? repoId : undefined;
 }
 
-function optionalNonEmptyString(value: unknown, fieldName: "repo_id" | "snapshot_id", fallbackRepoId: string, fallbackSnapshotId: string, auditId: string): OptionalStringResult {
+function optionalNonEmptyString(value: unknown, fieldName: "snapshot_id", fallbackRepoId: string, fallbackSnapshotId: string, auditId: string): OptionalStringResult {
   if (value === undefined) {
     return { ok: true, value: undefined };
   }
@@ -222,29 +258,52 @@ function optionalNonEmptyString(value: unknown, fieldName: "repo_id" | "snapshot
   };
 }
 
-function resolveRuntimeToolArgs(args: ToolCallArgs, state: RuntimeState, auditId: string): ResolvedToolCallArgs | ToolError {
-  const manifestRepoId = getManifestRepoId(state.manifest);
-  const fallbackRepoId = manifestRepoId ?? "unknown";
-  const fallbackSnapshotId = state.sessionSnapshotId || "unknown";
-
-  const repoId = optionalNonEmptyString(args.repo_id, "repo_id", fallbackRepoId, fallbackSnapshotId, auditId);
-  if (!repoId.ok) return repoId.error;
-
-  const snapshotId = optionalNonEmptyString(args.snapshot_id, "snapshot_id", fallbackRepoId, fallbackSnapshotId, auditId);
-  if (!snapshotId.ok) return snapshotId.error;
-
-  if (repoId.value !== undefined && manifestRepoId !== undefined && repoId.value !== manifestRepoId) {
+function requiredRepoPath(value: unknown, auditId: string): string | ToolError {
+  if (typeof value !== "string" || value.length === 0) {
     return toolError(
       "access_denied",
-      `Repo mismatch: session bound to ${manifestRepoId}.`,
-      repoId.value,
-      fallbackSnapshotId,
+      "repo_path must be a non-empty string from repo.list.",
+      "unknown",
+      "unknown",
       CONFIG.policyVersion,
       auditId,
     );
   }
 
-  const effectiveRepoId = repoId.value ?? manifestRepoId;
+  return value;
+}
+
+function stateForRepoPath(repoPath: string, auditId: string): RuntimeState | ToolError {
+  const normalized = normalizeRepoRootPath(repoPath);
+  const state = runtimeStatesByPath.get(repoPathCompareKey(normalized));
+  if (!state) {
+    return toolError(
+      "access_denied",
+      "repo_path is not in the configured repository whitelist.",
+      "unknown",
+      "unknown",
+      CONFIG.policyVersion,
+      auditId,
+    );
+  }
+  return state;
+}
+
+function withPublicRepoPath(result: ToolError | Record<string, unknown>, repoPath: string): ToolError | Record<string, unknown> {
+  const output: Record<string, unknown> = { ...result, repo_path: repoPath };
+  delete output.repo_id;
+  return output;
+}
+
+function resolveRuntimeToolArgs(args: ToolCallArgs, state: RuntimeState, auditId: string): ResolvedToolCallArgs | ToolError {
+  const manifestRepoId = getManifestRepoId(state.manifest);
+  const fallbackRepoId = manifestRepoId ?? "unknown";
+  const fallbackSnapshotId = state.sessionSnapshotId || "unknown";
+
+  const snapshotId = optionalNonEmptyString(args.snapshot_id, "snapshot_id", fallbackRepoId, fallbackSnapshotId, auditId);
+  if (!snapshotId.ok) return snapshotId.error;
+
+  const effectiveRepoId = manifestRepoId;
   const effectiveSnapshotId = snapshotId.value ?? state.sessionSnapshotId;
 
   if (!effectiveRepoId || !effectiveSnapshotId) {
@@ -261,7 +320,25 @@ function resolveRuntimeToolArgs(args: ToolCallArgs, state: RuntimeState, auditId
   return {
     ...args,
     repo_id: effectiveRepoId,
+    repo_path: state.repoPath,
     snapshot_id: effectiveSnapshotId,
+  };
+}
+
+function listRepositories(auditId: string): Record<string, unknown> {
+  const repositories = getRuntimeStates().map((state) => ({
+    name: state.repoName ?? state.repoPath,
+    repo_path: state.repoPath,
+    snapshot_id: state.sessionSnapshotId,
+  }));
+
+  return {
+    repositories,
+    count: repositories.length,
+    content_origin: CONFIG.contentOrigin,
+    instruction_trust: CONFIG.instructionTrust,
+    policy_version: CONFIG.policyVersion,
+    audit_id: auditId,
   };
 }
 
@@ -275,17 +352,36 @@ export async function handleToolCall(
   auditId: string,
 ): Promise<ToolError | Record<string, unknown>> {
   if (!isRegisteredTool(toolName)) {
-    return toolError("access_denied", `Unknown tool: ${toolName}`, String(args.repo_id ?? "unknown"), String(args.snapshot_id ?? "unknown"), CONFIG.policyVersion, auditId);
+    const error = toolError("access_denied", `Unknown tool: ${toolName}`, "unknown", String(args.snapshot_id ?? "unknown"), CONFIG.policyVersion, auditId);
+    return withPublicRepoPath(error, typeof args.repo_path === "string" ? args.repo_path : "unknown");
   }
 
-  const state = runtimeState;
-  if (!state) {
-    return toolError("internal_error", "Runtime not initialized.", String(args.repo_id ?? "unknown"), String(args.snapshot_id ?? "unknown"), CONFIG.policyVersion, auditId);
+  if (toolName === "repo.list") {
+    const result = listRepositories(auditId);
+    import("../audit/evidence.js").then(({ evidenceFromToolCall }) => {
+      evidenceFromToolCall(toolName, "repo-list", "current", auditId, args, result, false);
+    }).catch(() => { /* evidence failure must not block tool response */ });
+    return result;
+  }
+
+  if (runtimeStatesByPath.size === 0) {
+    const error = toolError("internal_error", "Runtime not initialized.", "unknown", String(args.snapshot_id ?? "unknown"), CONFIG.policyVersion, auditId);
+    return withPublicRepoPath(error, typeof args.repo_path === "string" ? args.repo_path : "unknown");
+  }
+
+  const repoPath = requiredRepoPath(args.repo_path, auditId);
+  if (typeof repoPath !== "string") {
+    return withPublicRepoPath(repoPath, "unknown");
+  }
+
+  const state = stateForRepoPath(repoPath, auditId);
+  if ("isError" in state) {
+    return withPublicRepoPath(state, repoPath);
   }
 
   const resolvedArgs = resolveRuntimeToolArgs(args, state, auditId);
   if ("isError" in resolvedArgs) {
-    return resolvedArgs;
+    return withPublicRepoPath(resolvedArgs, state.repoPath);
   }
 
   // BROKEN CHAIN-001 FIX: Auth check on every tool call
@@ -299,13 +395,16 @@ export async function handleToolCall(
       String(resolvedArgs.path ?? resolvedArgs.query ?? "."),
     );
     if (!authResult.allowed) {
-      return authDeniedResponse(authResult);
+      return withPublicRepoPath(authDeniedResponse(authResult), resolvedArgs.repo_path);
     }
   }
 
   // SNAP-002 / T-026: Enforce cross-tool snapshot consistency
   if (state.sessionSnapshotId && resolvedArgs.snapshot_id !== state.sessionSnapshotId) {
-    return toolError("snapshot_not_ready", `Snapshot mismatch: session bound to ${state.sessionSnapshotId}`, resolvedArgs.repo_id, resolvedArgs.snapshot_id, CONFIG.policyVersion, auditId);
+    return withPublicRepoPath(
+      toolError("snapshot_not_ready", `Snapshot mismatch: session bound to ${state.sessionSnapshotId}`, resolvedArgs.repo_id, resolvedArgs.snapshot_id, CONFIG.policyVersion, auditId),
+      resolvedArgs.repo_path,
+    );
   }
 
   // BROKEN CHAIN-005 FIX: Grant budget check
@@ -321,6 +420,7 @@ export async function handleToolCall(
     case "repo.search":
       result = await repoSearcher({
         repo_id: resolvedArgs.repo_id,
+        repo_path: resolvedArgs.repo_path,
         snapshot_id: resolvedArgs.snapshot_id,
         query: String(resolvedArgs.query ?? ""),
         mode: String(resolvedArgs.mode ?? "text"),
@@ -330,6 +430,7 @@ export async function handleToolCall(
     case "repo.fetch":
       result = await repoFetcher({
         repo_id: resolvedArgs.repo_id,
+        repo_path: resolvedArgs.repo_path,
         snapshot_id: resolvedArgs.snapshot_id,
         path: String(resolvedArgs.path ?? ""),
         line_start: Number(resolvedArgs.line_start ?? 1),
@@ -340,6 +441,7 @@ export async function handleToolCall(
     case "repo.tree":
       result = await repoTreer({
         repo_id: resolvedArgs.repo_id,
+        repo_path: resolvedArgs.repo_path,
         snapshot_id: resolvedArgs.snapshot_id,
         path: String(resolvedArgs.path ?? "."),
         depth: Number(resolvedArgs.depth ?? CONFIG.tools.tree.defaultDepth),
@@ -349,6 +451,7 @@ export async function handleToolCall(
     case "repo.symbols":
       result = await repoSymbols({
         repo_id: resolvedArgs.repo_id,
+        repo_path: resolvedArgs.repo_path,
         snapshot_id: resolvedArgs.snapshot_id,
         query: String(resolvedArgs.query ?? ""),
         language: resolvedArgs.language ? String(resolvedArgs.language) : undefined,
@@ -358,11 +461,12 @@ export async function handleToolCall(
     case "repo.refresh":
       result = await refreshRepositorySnapshot({
         repo_id: resolvedArgs.repo_id,
+        repo_path: resolvedArgs.repo_path,
         current_snapshot_id: resolvedArgs.snapshot_id,
         rootDir,
         budget: state.budgetState,
         audit_id: auditId,
-        publishSnapshot: publishRuntimeSnapshot,
+        publishSnapshot: (manifest, snapshotId) => publishRuntimeSnapshot(resolvedArgs.repo_path, manifest, snapshotId),
       });
       break;
     default:
@@ -374,5 +478,5 @@ export async function handleToolCall(
     evidenceFromToolCall(toolName, resolvedArgs.repo_id, resolvedArgs.snapshot_id, auditId, resolvedArgs, result, "error_code" in result);
   }).catch(() => { /* evidence failure must not block tool response */ });
 
-  return result;
+  return withPublicRepoPath(result, resolvedArgs.repo_path);
 }
