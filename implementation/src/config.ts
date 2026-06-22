@@ -13,7 +13,7 @@ export const CONFIG = {
   },
 
   tools: {
-    /** All four tools are read-only; this is enforced server-side, not by annotation hints. */
+    /** All tools are read-only from the connector caller's perspective; this is enforced server-side, not by annotation hints. */
     readOnlyHint: true as const,
     destructiveHint: false as const,
     openWorldHint: false as const,
@@ -56,6 +56,14 @@ export const CONFIG = {
       queryMaxLength: 256,
       defaultLimit: 20,
       maxLimit: 50,
+    },
+
+    refresh: {
+      name: "repo.refresh" as const,
+      title: "Repository Refresh Snapshot",
+      description:
+        "Refresh the authorized repository snapshot and indexes on demand. Builds the new snapshot first, then switches runtime state only after the refresh succeeds.",
+      reasonMaxLength: 256,
     },
   },
 

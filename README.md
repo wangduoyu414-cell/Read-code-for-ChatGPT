@@ -2,7 +2,7 @@
 
 让 ChatGPT read your local repository, but only through a narrow, read-only, auditable MCP gate.
 
-`Read code for ChatGPT` is a local MCP（Model Context Protocol，模型上下文协议）server that turns an authorized repository folder into bounded tools ChatGPT can call: tree, search, fetch, and symbols. It is built for people who want ChatGPT to understand a real codebase without pasting files into the chat window.
+`Read code for ChatGPT` is a local MCP（Model Context Protocol，模型上下文协议）server that turns an authorized repository folder into bounded tools ChatGPT can call: tree, search, fetch, symbols, and refresh. It is built for people who want ChatGPT to understand a real codebase without pasting files into the chat window.
 
 ![Add read code to ChatGPT](docs/assets/chatgpt-connect-modal.svg)
 
@@ -17,7 +17,7 @@ ChatGPT is good at reasoning, but a repository is not a single prompt. This proj
 - fetch bounded line ranges
 - find lightweight symbol definitions
 
-The design goal is not "give the model my whole disk". The design goal is: **grant one folder, expose four read-only tools, mark all repository content as untrusted, and keep server-side limits in charge.**
+The design goal is not "give the model my whole disk". The design goal is: **grant one folder, expose bounded non-destructive tools, mark all repository content as untrusted, and keep server-side limits in charge.**
 
 ## What It Can Read
 
@@ -40,6 +40,8 @@ Do not ask ChatGPT to read `D:\project\file.ts` or `/Users/name/project/file.ts`
 
 The snapshot admits common source, config, and documentation files. It also admits project text files without standard extensions, such as `Dockerfile`, `Makefile`, `LICENSE`, `.gitignore`, and unknown-extension files that pass a lightweight text check.
 
+The repository view is snapshot-based. If files change after startup, ask ChatGPT to call `repo.refresh`; the server will scan the same authorized root again, build a new snapshot/index, and switch to it only after the refresh succeeds.
+
 ## Tools
 
 | Tool | Purpose |
@@ -48,8 +50,9 @@ The snapshot admits common source, config, and documentation files. It also admi
 | `repo.search` | Search indexed text snippets. |
 | `repo.fetch` | Fetch a bounded line segment from one file. |
 | `repo.symbols` | Find lightweight symbol definitions. |
+| `repo.refresh` | Re-scan the authorized root and publish a fresh snapshot/index. |
 
-All four tools are read-only. There is no shell execution, no write API（应用程序接口）, and no full repository export tool.
+All tools are non-destructive for your repository. `repo.refresh` updates only the server's in-memory snapshot/index. There is no shell execution, no write API（应用程序接口）, and no full repository export tool.
 
 ## Safety Model
 
@@ -137,6 +140,7 @@ Implemented:
 - read-only tool registry
 - repository snapshot manifest
 - text and symbol indexing
+- on-demand snapshot refresh with old-snapshot fallback on failure
 - path guard, redaction, budgets, and audit ids
 - ChatGPT connector discovery endpoints
 

@@ -507,6 +507,144 @@
           }
         }
       }
+    },
+    {
+      "name": "repo.refresh",
+      "title": "Repository Refresh Snapshot",
+      "description": "Refresh the authorized repository snapshot and indexes on demand. Publishes the new snapshot only after refresh succeeds.",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      },
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [],
+        "properties": {
+          "repo_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "snapshot_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repo_id",
+          "snapshot_id",
+          "previous_snapshot_id",
+          "refreshed",
+          "status",
+          "files",
+          "excluded",
+          "manifest_hash",
+          "index",
+          "duration_ms",
+          "policy_version",
+          "content_origin",
+          "instruction_trust",
+          "audit_id",
+          "isError",
+          "next_cursor",
+          "error_code",
+          "message",
+          "retryable"
+        ],
+        "properties": {
+          "repo_id": {
+            "type": "string"
+          },
+          "snapshot_id": {
+            "type": "string"
+          },
+          "previous_snapshot_id": {
+            "type": "string"
+          },
+          "refreshed": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "refreshed"
+            ]
+          },
+          "files": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "excluded": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "manifest_hash": {
+            "type": "string"
+          },
+          "index": {
+            "$ref": "#/$defs/index_summary"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "policy_version": {
+            "type": "string"
+          },
+          "content_origin": {
+            "type": "string",
+            "enum": [
+              "repository_snapshot"
+            ]
+          },
+          "instruction_trust": {
+            "type": "string",
+            "enum": [
+              "untrusted"
+            ]
+          },
+          "audit_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "isError": {
+            "type": "boolean",
+            "default": false
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retryable": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
     }
   ],
   "$defs": {
@@ -661,6 +799,29 @@
         },
         "retryable": {
           "type": "boolean"
+        }
+      }
+    },
+    "index_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "files_indexed",
+        "files_skipped",
+        "duration_ms"
+      ],
+      "properties": {
+        "files_indexed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "files_skipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     }

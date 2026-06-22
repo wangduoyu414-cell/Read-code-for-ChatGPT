@@ -17,4 +17,4 @@
 ## Immutability
 - 快照刷新创建新 snapshot_id，不原地修改旧快照
 - expired/revoked 快照拒绝所有工具调用
-- 四个工具必须使用同一 snapshot_id
+- 查询工具必须使用当前运行时绑定的同一 snapshot_id；`repo.refresh` 成功后切换到新的 snapshot_id

@@ -6,7 +6,7 @@
 |---|---|---|---|
 | OE-001 | OpenAI Apps SDK Quickstart: https://developers.openai.com/apps-sdk/quickstart | `Apps SDK`（应用开发套件）应用使用 `MCP`（模型上下文协议）连接 `ChatGPT`（聊天网页端）；必需 `MCP server`，`UI`（界面）可选。 | 第一版可以无界面，核心是 `MCP server` 和工具。 |
 | OE-002 | OpenAI Build your MCP server: https://developers.openai.com/apps-sdk/build/mcp-server | `MCP server` 定义工具、执行鉴权、返回数据，可指向 `UI`（界面）资源。 | 鉴权和数据返回必须在服务端完成。 |
-| OE-003 | OpenAI Define tools: https://developers.openai.com/apps-sdk/plan/tools | 工具是 `MCP server` 与模型之间的契约；需要明确 `inputSchema`、`outputSchema`、结构化输出、读写拆分、工具提示。 | 四个工具必须稳定命名、单一职责、结构化返回。 |
+| OE-003 | OpenAI Define tools: https://developers.openai.com/apps-sdk/plan/tools | 工具是 `MCP server` 与模型之间的契约；需要明确 `inputSchema`、`outputSchema`、结构化输出、读写拆分、工具提示。 | 工具必须稳定命名、单一职责、结构化返回。 |
 | OE-004 | OpenAI Connect from ChatGPT: https://developers.openai.com/apps-sdk/deploy/connect-chatgpt | `Developer mode`（开发者模式）可连接 `MCP server`；本地开发可用 `Secure MCP Tunnel` 或公网隧道；权限设置可允许自动读取信息。 | 私有代码场景不能依赖确认提示；服务端必须逐次校验。 |
 | OE-005 | OpenAI Secure MCP Tunnel: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels | `tunnel-client` 不需要入站互联网；私有 `MCP server` 保持在客户控制环境内，经出站 `HTTPS` 连接 `OpenAI`。 | 私有本地仓库默认只采用 `Secure MCP Tunnel`。 |
 | OE-006 | OpenAI Security & Privacy: https://developers.openai.com/apps-sdk/guides/security-privacy | 要求最小权限、明确同意、纵深防御、假设提示注入和恶意输入会到达服务器、验证所有内容并保留审计日志。 | 必须有威胁模型、输入校验、输出脱敏和审计。 |

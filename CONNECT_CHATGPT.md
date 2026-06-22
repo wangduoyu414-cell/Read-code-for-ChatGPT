@@ -14,7 +14,7 @@ The current project mode is `dev_local`（本地开发）. It is ready for local
 
 ## 1. What ChatGPT Gets（ChatGPT 能获得什么）
 
-ChatGPT receives four read-only tools:
+ChatGPT receives bounded, non-destructive tools:
 
 | Tool | What it does |
 |---|---|
@@ -22,10 +22,13 @@ ChatGPT receives four read-only tools:
 | `repo.search` | Search indexed text. |
 | `repo.fetch` | Read a bounded line range from one file. |
 | `repo.symbols` | Find lightweight symbol definitions. |
+| `repo.refresh` | Re-scan the authorized root and publish a fresh snapshot/index. |
 
 The server rejects absolute paths, parent traversal, sensitive files, oversized responses, unsupported files, and unreadable/system directories. Repository content is returned as untrusted data.
 
 Readable repository files include common source, config, and documentation files, plus common project text files such as `Dockerfile`, `Makefile`, `LICENSE`, `.gitignore`, and unknown-extension files that pass a lightweight text check. Binary files and sensitive files stay excluded.
+
+The repository view is snapshot-based. New or changed files are visible after ChatGPT calls `repo.refresh`; failed refreshes keep the previous snapshot active.
 
 ## 2. Install（安装）
 
@@ -99,6 +102,7 @@ List the repository tree.
 Read docs/README.md.
 Search for ConfigLoader.
 Fetch src/index.ts lines 1-100.
+Refresh the repository snapshot, then search for the latest changed file.
 ```
 
 Do not ask ChatGPT to read absolute paths. The server will reject them.
@@ -131,6 +135,7 @@ repo.search
 repo.fetch
 repo.tree
 repo.symbols
+repo.refresh
 ```
 
 ## 7. Connect From ChatGPT（从 ChatGPT 连接）
@@ -178,6 +183,7 @@ Get-CimInstance Win32_Process -Filter "name = 'node.exe'" |
 | `repo.tree` rejects `D:\...` | Use relative paths inside ChatGPT. |
 | Full drive scan is slow | Bind a specific project folder instead of `D:\` or `/`. |
 | Port `3100` is busy | Start with `--port 3101` and update tunnel target. |
+| New files do not appear | Ask ChatGPT to call `repo.refresh`, then search or list the tree again. |
 | GitHub reports a secret | Rotate the value, remove it from history, and replace examples with placeholders. |
 
 ## 10. Official References（官方参考）

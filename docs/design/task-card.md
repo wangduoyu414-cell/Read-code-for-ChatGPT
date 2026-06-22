@@ -56,7 +56,7 @@ In scope（范围内）：
 - 单用户、单本地工作区、单仓库、单只读快照。
 - 本地私有 `MCP gateway`（协议网关）。
 - 默认 `Secure MCP Tunnel`（安全 MCP 隧道）。
-- 四个只读工具：`repo.search`（仓库搜索）、`repo.fetch`（片段读取）、`repo.tree`（仓库树）、`repo.symbols`（符号定位）。
+- 读取工具：`repo.search`（仓库搜索）、`repo.fetch`（片段读取）、`repo.tree`（仓库树）、`repo.symbols`（符号定位）；刷新工具：`repo.refresh`（刷新快照）。
 - 路径规范化、快照一致性、敏感数据过滤、返回限额、结构化审计。
 - `MCP Inspector`（协议检查器）、`ChatGPT developer mode`（开发者模式）、`API Playground`（接口调试台）验证计划。
 
@@ -183,7 +183,7 @@ Out of scope（范围外）：
 完整矩阵见 `docs/design/test-matrix.md`。
 
 必须覆盖：
-- 四个工具各一个正例和一个负例。
+- 每个工具至少一个正例和一个负例。
 - 黄金问题集：定义位置、入口查找、实现差异。
 - 越权路径：父目录、绝对路径、同级仓库、符号链接/目录联接/重解析点、编码变体、大小写别名。
 - 敏感数据：`.env`（环境变量文件）、私钥、令牌、云凭据、`.git`（版本控制内部目录）、高熵疑似密钥。
@@ -280,7 +280,7 @@ completion status（完成状态）：
 - `client_id`（客户端/连接器标识）。
 - `repo_id`（仓库标识）。
 - `snapshot_id`（快照标识）。
-- allowed_tools（允许工具）：只能为 `repo.search`、`repo.fetch`、`repo.tree`、`repo.symbols` 的子集。
+- allowed_tools（允许工具）：只能为 `repo.search`、`repo.fetch`、`repo.tree`、`repo.symbols`、`repo.refresh` 的子集。
 - allowed_paths（允许路径集合）：第一版为快照内全部非敏感文本路径或更小集合。
 - data_budget（数据预算）：单次字节、单会话字节、单授权累计字节、调用次数、树深、结果条数。
 - expiry（过期时间）。

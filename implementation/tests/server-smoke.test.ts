@@ -35,11 +35,12 @@ beforeEach(() => {
 
 await describe("Tool Registry", async () => {
   const tools = getToolRegistrations();
-  await it("registers exactly four tools", () => assert.equal(tools.length, 4));
+  await it("registers exactly five tools", () => assert.equal(tools.length, 5));
   await it("registers repo.search", () => assert.equal(isRegisteredTool("repo.search"), true));
   await it("registers repo.fetch", () => assert.equal(isRegisteredTool("repo.fetch"), true));
   await it("registers repo.tree", () => assert.equal(isRegisteredTool("repo.tree"), true));
   await it("registers repo.symbols", () => assert.equal(isRegisteredTool("repo.symbols"), true));
+  await it("registers repo.refresh", () => assert.equal(isRegisteredTool("repo.refresh"), true));
   await it("does not register unknown tools", () => {
     assert.equal(isRegisteredTool("repo.write"), false);
     assert.equal(isRegisteredTool("shell.exec"), false);

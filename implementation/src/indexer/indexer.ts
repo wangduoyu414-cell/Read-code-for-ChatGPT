@@ -25,14 +25,19 @@ export interface IndexResult {
   error?: string;
 }
 
-export function runIndexer(manifest: SnapshotManifest, rootDir: string): IndexResult {
+export interface RunIndexerOptions {
+  clearExisting?: boolean;
+}
+
+export function runIndexer(manifest: SnapshotManifest, rootDir: string, options: RunIndexerOptions = {}): IndexResult {
   const start = Date.now();
   let files_indexed = 0;
   let files_skipped = 0;
 
-  // Clear old indices for this snapshot
-  clearTextIndex();
-  clearSymbolIndex();
+  if (options.clearExisting ?? true) {
+    clearTextIndex();
+    clearSymbolIndex();
+  }
 
   // Count admitted files (do NOT mutate the manifest — GAP-010 fix)
   const admitted = manifest.files.filter((f) => f.index_admitted);

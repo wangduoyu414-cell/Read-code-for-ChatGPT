@@ -40,7 +40,7 @@ export interface NotYetImplementedError extends ToolError {
 
 /**
  * Create a not-yet-implemented error for the scaffold phase.
- * All four tools return this until their implementations are wired in EXEC-008.
+ * Scaffolded tools returned this until their implementations were wired in EXEC-008.
  */
 export function notImplementedError(
   repo_id: string,

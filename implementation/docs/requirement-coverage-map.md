@@ -12,7 +12,7 @@
 | 业务场景（Given/When/Then） | docs/design/task-card.md §3 | EXEC-010 | covered |
 | 系统架构（8 模块） | docs/design/task-card.md §5 | EXEC-002, EXEC-003, EXEC-004, EXEC-006, EXEC-007, EXEC-008, EXEC-009 | covered |
 | 安全不变量 INV-001~INV-010 | docs/design/task-card.md §6 | EXEC-003, EXEC-004, EXEC-008, EXEC-009 | covered |
-| 工具规格（4 工具 schema） | docs/design/task-card.md §7, tool-schemas.json | EXEC-008 | covered |
+| 工具规格（当前工具 schema） | docs/design/task-card.md §7, tool-schemas.json | EXEC-008 | covered |
 | 路径与快照规则 PATH-001~004, SNAP-001~003 | docs/design/task-card.md §8 | EXEC-003, EXEC-006 | covered |
 | 认证与授权 AUTH-001~005 | docs/design/task-card.md §9 | EXEC-004, EXEC-005 | covered |
 | 状态流（10 种失败状态） | docs/design/task-card.md §10 | EXEC-003 | covered |

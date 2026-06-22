@@ -62,6 +62,23 @@ await describe("snapshot ingest", async () => {
     }
   });
 
+  await it("rejects secret-like content in newly admitted text files", () => {
+    const root = makeTempRepo();
+    try {
+      writeFileSync(join(root, "notes.local"), "bearer abcdefghijklmnopqrstuvwxyz123456\n");
+      writeFileSync(join(root, "keep.local"), "visible=true\n");
+
+      const { manifest, warnings } = ingestDirectory(root, "repo-test", "snap-test");
+      const paths = manifest.files.map((f) => f.relative_path);
+
+      assert.deepEqual(paths, ["keep.local"]);
+      assert.ok(manifest.excluded_files.some((f) => f.relative_path === "notes.local" && f.reason === "sensitive content"));
+      assert.ok(warnings.some((w) => w.includes("EXCLUDED(sensitive): notes.local")));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   await it("skips Windows system directories by name", () => {
     const root = makeTempRepo();
     try {

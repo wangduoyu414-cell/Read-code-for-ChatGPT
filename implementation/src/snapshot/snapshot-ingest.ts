@@ -8,7 +8,7 @@ import { join, relative, extname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { computeFileHash, finalizeManifest, type ManifestFile, type SnapshotManifest } from "./manifest.js";
 import { CONFIG } from "../config.js";
-import { isSensitiveFileType } from "../security/secret-scanner.js";
+import { isSensitiveFileType, scanForSecrets } from "../security/secret-scanner.js";
 import { validateFilePath } from "../security/path-guard.js";
 import { generateAuditId } from "../audit/audit-id.js";
 
@@ -190,6 +190,14 @@ export function ingestDirectory(rootDir: string, repo_id: string, snapshotIdPara
         }
 
         const content = raw.toString("utf-8");
+        if (hasUnknownExtension || hasKnownTextName) {
+          const scan = scanForSecrets(content, repo_id, snapId, auditId);
+          if (!scan.passed) {
+            exclude(rel, "sensitive content", "sensitive");
+            continue;
+          }
+        }
+
         const lines = content.split("\n");
 
         files.push({

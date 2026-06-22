@@ -1,5 +1,5 @@
 /**
- * Tool registry — registers the four read-only tools with MCP tool definitions.
+ * Tool registry — registers the read-only tools with MCP tool definitions.
  * Uses Zod schemas as required by @modelcontextprotocol/sdk.
  * Real tool implementations wired (post-EXEC-008).
  */
@@ -10,6 +10,7 @@ import { toolError, type ToolError } from "../errors.js";
 import { authorizeToolCall, authDeniedResponse } from "../policy/policy-engine.js";
 import { createBudgetState } from "../security/budget.js";
 import type { SnapshotManifest } from "../snapshot/manifest.js";
+import { refreshRepositorySnapshot } from "../snapshot/refresh.js";
 // Real tool implementations
 import { repoSearcher, repoFetcher, repoTreer, repoSymbols } from "./read-only-tools.js";
 
@@ -49,6 +50,12 @@ const symbolsInputSchema = z.object({
   query: z.string().min(1).max(CONFIG.tools.symbols.queryMaxLength),
   language: z.string().optional(),
   limit: z.number().int().min(1).max(CONFIG.tools.symbols.maxLimit).default(CONFIG.tools.symbols.defaultLimit),
+});
+
+const refreshInputSchema = z.object({
+  repo_id: repoSchema,
+  snapshot_id: snapshotSchema,
+  reason: z.string().min(1).max(CONFIG.tools.refresh.reasonMaxLength).optional(),
 });
 
 // ─── Tool definitions ───────────────────────────────────────────────────────
@@ -110,6 +117,17 @@ const TOOL_REGISTRATIONS: ToolRegistration[] = [
       openWorldHint: CONFIG.tools.openWorldHint,
     },
   },
+  {
+    name: CONFIG.tools.refresh.name,
+    title: CONFIG.tools.refresh.title,
+    description: CONFIG.tools.refresh.description,
+    inputSchema: refreshInputSchema,
+    annotations: {
+      readOnlyHint: CONFIG.tools.readOnlyHint,
+      destructiveHint: CONFIG.tools.destructiveHint,
+      openWorldHint: CONFIG.tools.openWorldHint,
+    },
+  },
 ];
 
 // ─── Registry API ───────────────────────────────────────────────────────────
@@ -143,6 +161,16 @@ export function setRuntimeState(state: RuntimeState): void {
 
 export function getRuntimeState(): RuntimeState | null {
   return runtimeState;
+}
+
+function publishRuntimeSnapshot(manifest: SnapshotManifest, snapshotId: string): void {
+  const state = runtimeState;
+  if (!state) return;
+  runtimeState = {
+    ...state,
+    manifest,
+    sessionSnapshotId: snapshotId,
+  };
 }
 
 // ─── Tool dispatch ───────────────────────────────────────────────────────────
@@ -326,6 +354,16 @@ export async function handleToolCall(
         language: resolvedArgs.language ? String(resolvedArgs.language) : undefined,
         limit: Number(resolvedArgs.limit ?? CONFIG.tools.symbols.defaultLimit),
       }, manifest, state.budgetState);
+      break;
+    case "repo.refresh":
+      result = await refreshRepositorySnapshot({
+        repo_id: resolvedArgs.repo_id,
+        current_snapshot_id: resolvedArgs.snapshot_id,
+        rootDir,
+        budget: state.budgetState,
+        audit_id: auditId,
+        publishSnapshot: publishRuntimeSnapshot,
+      });
       break;
     default:
       result = toolError("internal_error", `Unknown tool: ${toolName}`, resolvedArgs.repo_id, resolvedArgs.snapshot_id, CONFIG.policyVersion, auditId);
