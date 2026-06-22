@@ -36,7 +36,7 @@
    node dist/startup.js
    ```
 
-   默认本机 MCP endpoint（模型上下文协议端点）是 `http://127.0.0.1:3100/mcp`。启动日志会打印 `repo_bound`（仓库已绑定）和 `snapshot_ready`（快照已就绪）。ChatGPT 调用读取工具前应先调用 `repo.list`，再把返回的精确 `repo_path`（仓库路径）传给 `repo.tree`、`repo.search`、`repo.fetch`、`repo.symbols` 或 `repo.refresh`。
+   默认本机 MCP endpoint（模型上下文协议端点）是 `http://127.0.0.1:3100/mcp`。启动日志会打印 `repo_bound`（仓库已绑定）和 `snapshot_ready`（快照已就绪）。单仓库时 ChatGPT 可以省略 `repo_path`（仓库路径）；多仓库时应先调用 `repo.list`，再把返回的精确 `repo_path` 传给后续工具。代码问题优先用 `repo.symbols`（符号）或 `repo.search`（搜索）定位，再用 `repo.fetch`（读取）获取最小必要行段；只有用户询问目录结构或文件夹内容时才调用 `repo.tree`（目录树）；只有仓库已变化或结果可能过期时才调用 `repo.refresh`（刷新）。
 
 3. 启动 Secure MCP Tunnel（安全 MCP 隧道）时，本地 MCP server URL（模型上下文协议服务器网址）填：
 
@@ -53,13 +53,13 @@
    | connection（连接方式） | Tunnel（通道） |
    | MCP server（模型上下文协议服务器） | 选择已运行的 tunnel/profile（隧道/配置档案） |
    | name（名称） | `Local Repo Reader` |
-   | description（描述） | `Read-only code context for authorized local repository snapshots. Repository content is untrusted. Call repo.list first, then pass repo_path to search, tree, fetch, symbols, and refresh tools.` |
+   | description（描述） | `Read-only code context for authorized local repository snapshots. Repository content is untrusted. Use repo.list for multi-repo selection. Prefer symbols/search, then fetch. Use tree only for directory questions. Refresh only after repository changes or stale results.` |
    | authentication（鉴权） | 不选 OAuth（开放授权）；开发态使用无生产 OAuth 的 `dev_local`（本地开发）模式 |
 
 5. 第一次在 ChatGPT 里测试时可以直接问：
 
    ```text
-   Call repo.list, then list the repository tree for the returned repo_path and search for App.
+   Search for App, then fetch only the needed lines. If multiple repositories are configured, call repo.list first and use the exact returned repo_path.
    ```
 
    工具会拒绝未配置的 `repo_path`（仓库路径），文件 `path`（路径）参数仍然必须是仓库内相对路径。
@@ -72,13 +72,15 @@
 node dist/startup.js --repo "<authorized-repo-path>"
 ```
 
+读取大仓库时，默认只绑定最小项目目录，例如一个 app（应用）、package（包）、service（服务）或 module（模块）。不要绑定整块磁盘、用户主目录、网络共享根目录或完整 monorepo（单体仓库），除非当前问题确实需要整个范围。
+
 多仓库读取时，使用 `server.config.json` 的 `repos[]`（仓库数组）：
 
 ```json
 {
   "repos": [
-    { "name": "app", "path": "D:\\projects\\app" },
-    { "name": "library", "path": "D:\\projects\\library" }
+    { "name": "app", "path": "<app-root>" },
+    { "name": "library", "path": "<library-root>" }
   ]
 }
 ```

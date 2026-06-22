@@ -89,6 +89,7 @@ interface InitializedRepo {
   rootDir: string;
   repoPath: string;
   repoName: string;
+  repoDescription?: string;
   snapshotId: string;
 }
 
@@ -129,7 +130,7 @@ function initRepoAndSnapshot(repoConfig: { name: string; path: string; descripti
   const indexResult = runIndexer(manifest, rootDir, { clearExisting: false });
   console.log(JSON.stringify({ event: "index_complete", ...indexResult }));
 
-  return { manifest, rootDir, repoPath: repo.repo_path, repoName: repoConfig.name, snapshotId: snapId };
+  return { manifest, rootDir, repoPath: repo.repo_path, repoName: repoConfig.name, repoDescription: repoConfig.description, snapshotId: snapId };
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -180,6 +181,7 @@ async function main() {
       rootDir: repo.rootDir,
       repoPath: repo.repoPath,
       repoName: repo.repoName,
+      repoDescription: repo.repoDescription,
       snapshotId: repo.snapshotId,
     })),
   });

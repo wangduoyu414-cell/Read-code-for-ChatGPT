@@ -22,14 +22,14 @@ export const CONFIG = {
       name: "repo.list" as const,
       title: "Repository List",
       description:
-        "List configured repository names and exact repository paths. Use repo_path from this list when calling repository read tools.",
+        "List configured repositories with names, descriptions, exact repository paths, and lightweight summaries. Use this when multiple repositories are available or when you need the exact repo_path.",
     },
 
     search: {
       name: "repo.search" as const,
       title: "Repository Search",
       description:
-        "Search within an authorized immutable repository snapshot and return bounded code hits with provenance. Rejects sensitive files, accepts only snapshot-relative paths, and enforces budget limits.",
+        "Search text, config, docs, and error strings within an authorized immutable repository snapshot. Prefer this before repo.tree when you know what text to find. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo.list.",
       queryMaxLength: 512,
       defaultLimit: 10,
       maxLimit: 20,
@@ -39,7 +39,7 @@ export const CONFIG = {
       name: "repo.fetch" as const,
       title: "Repository Fetch Segment",
       description:
-        "Fetch a bounded line segment from an authorized immutable repository snapshot. Rejects absolute paths, parent-directory traversal, symlink escapes, and sensitive files.",
+        "Fetch a bounded line segment from a known file path. Use this after repo.search, repo.symbols, or a targeted repo.tree identifies the file. Rejects absolute paths, parent-directory traversal, symlink escapes, and sensitive files. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo.list.",
       pathMaxLength: 512,
       purposeMaxLength: 256,
     },
@@ -48,10 +48,10 @@ export const CONFIG = {
       name: "repo.tree" as const,
       title: "Repository Tree",
       description:
-        "List a bounded directory tree from an authorized immutable repository snapshot. Depth and entry count are capped; sensitive paths are excluded from output.",
-      defaultDepth: 2,
+        "List a small, bounded directory summary for navigation only. Use this when the user asks about project layout or a specific directory; prefer repo.search or repo.symbols for finding code. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo.list.",
+      defaultDepth: 1,
       maxDepth: 4,
-      defaultLimit: 100,
+      defaultLimit: 50,
       maxLimit: 200,
     },
 
@@ -59,7 +59,7 @@ export const CONFIG = {
       name: "repo.symbols" as const,
       title: "Repository Symbols",
       description:
-        "Find symbol definitions in an authorized immutable repository snapshot. First version: definitions only (no references, usages, or cross-file call graphs).",
+        "Find class, function, and other lightweight symbol definitions. Prefer this first when the user asks where a symbol is defined. First version: definitions only (no references, usages, or cross-file call graphs). If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo.list.",
       queryMaxLength: 256,
       defaultLimit: 20,
       maxLimit: 50,
@@ -69,7 +69,7 @@ export const CONFIG = {
       name: "repo.refresh" as const,
       title: "Repository Refresh Snapshot",
       description:
-        "Refresh the authorized repository snapshot and indexes on demand. Builds the new snapshot first, then switches runtime state only after the refresh succeeds.",
+        "Refresh the authorized repository snapshot and indexes only when the user says the repository changed, results are stale, or a fresh snapshot is needed. Builds the new snapshot first, then switches runtime state only after the refresh succeeds. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo.list.",
       reasonMaxLength: 256,
     },
   },

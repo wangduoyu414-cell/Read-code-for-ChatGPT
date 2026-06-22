@@ -4,7 +4,7 @@
     {
       "name": "repo.list",
       "title": "Repository List",
-      "description": "List configured repository names and exact repository paths.",
+      "description": "List configured repositories with names, descriptions, exact repository paths, and lightweight summaries. Use this when multiple repositories are available or when you need the exact repo_path.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -94,7 +94,7 @@
     {
       "name": "repo.search",
       "title": "Repository Search",
-      "description": "Search within an authorized immutable repository snapshot and return bounded code hits with provenance.",
+      "description": "Search text, config, docs, and error strings within an authorized immutable repository snapshot. Prefer this before repo.tree when you know what text to find. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo.list.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -104,7 +104,6 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "repo_path",
           "query"
         ],
         "properties": {
@@ -222,7 +221,7 @@
     {
       "name": "repo.fetch",
       "title": "Repository Fetch Segment",
-      "description": "Fetch a bounded line segment from an authorized immutable repository snapshot.",
+      "description": "Fetch a bounded line segment from a known file path. Use this after repo.search, repo.symbols, or a targeted repo.tree identifies the file. Rejects absolute paths, parent-directory traversal, symlink escapes, and sensitive files. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo.list.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -232,7 +231,6 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "repo_path",
           "path",
           "line_start",
           "line_end",
@@ -361,7 +359,7 @@
     {
       "name": "repo.tree",
       "title": "Repository Tree",
-      "description": "List a bounded directory tree from an authorized immutable repository snapshot.",
+      "description": "List a small, bounded directory summary for navigation only. Use this when the user asks about project layout or a specific directory; prefer repo.search or repo.symbols for finding code. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo.list.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -370,9 +368,7 @@
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "repo_path"
-        ],
+        "required": [],
         "properties": {
           "repo_path": {
             "type": "string",
@@ -390,13 +386,13 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 4,
-            "default": 2
+            "default": 1
           },
           "limit": {
             "type": "integer",
             "minimum": 1,
             "maximum": 200,
-            "default": 100
+            "default": 50
           }
         }
       },
@@ -484,7 +480,7 @@
     {
       "name": "repo.symbols",
       "title": "Repository Symbols",
-      "description": "Find symbols in an authorized immutable repository snapshot.",
+      "description": "Find class, function, and other lightweight symbol definitions. Prefer this first when the user asks where a symbol is defined. First version: definitions only (no references, usages, or cross-file call graphs). If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo.list.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -494,7 +490,6 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "repo_path",
           "query"
         ],
         "properties": {
@@ -606,7 +601,7 @@
     {
       "name": "repo.refresh",
       "title": "Repository Refresh Snapshot",
-      "description": "Refresh the authorized repository snapshot and indexes on demand. Publishes the new snapshot only after refresh succeeds.",
+      "description": "Refresh the authorized repository snapshot and indexes only when the user says the repository changed, results are stale, or a fresh snapshot is needed. Builds the new snapshot first, then switches runtime state only after the refresh succeeds. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo.list.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -615,9 +610,7 @@
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "repo_path"
-        ],
+        "required": [],
         "properties": {
           "repo_path": {
             "type": "string",
@@ -751,7 +744,11 @@
       "required": [
         "name",
         "repo_path",
-        "snapshot_id"
+        "snapshot_id",
+        "description",
+        "file_count",
+        "top_dirs",
+        "primary_languages"
       ],
       "properties": {
         "name": {
@@ -765,6 +762,25 @@
         "snapshot_id": {
           "type": "string",
           "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "file_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "top_dirs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "primary_languages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

@@ -13,10 +13,10 @@
 ChatGPT is good at reasoning, but a repository is not a single prompt. This project gives it a small set of safe eyes:
 
 - list the exact configured repository paths
-- browse an authorized file tree
+- find lightweight symbol definitions
 - search code and docs
 - fetch bounded line ranges
-- find lightweight symbol definitions
+- browse an authorized file tree only when directory layout is requested
 
 The design goal is not "give the model my whole disk". The design goal is: **grant explicitly configured folders, expose bounded non-destructive tools, mark all repository content as untrusted, and keep server-side limits in charge.**
 
@@ -28,41 +28,47 @@ At startup you choose one or more authorized roots. For a single repository:
 node dist/startup.js --port 3100 --repo "<authorized-repo-path>"
 ```
 
+For large repositories, choose the smallest useful project directory: one app, package, service, or module. Avoid binding a whole drive, home directory, network share root, or full monorepo unless the task truly needs that scope.
+
 For multiple repositories, configure `implementation/server.config.json`:
 
 ```json
 {
   "repos": [
-    { "name": "app", "path": "D:\\projects\\app" },
-    { "name": "library", "path": "D:\\projects\\library" }
+    { "name": "app", "path": "<app-root>" },
+    { "name": "library", "path": "<library-root>" }
   ]
 }
 ```
 
-Inside ChatGPT, call `repo.list` first. It returns each configured `name`, exact `repo_path`, and current `snapshot_id`. Use `repo_path` only to choose the repository; file paths inside `repo.tree`, `repo.search`, `repo.fetch`, `repo.symbols`, and `repo.refresh` remain repository-relative:
+If only one repository is configured, ChatGPT can call `repo.search`, `repo.symbols`, `repo.fetch`, `repo.tree`, or `repo.refresh` without `repo_path`. If multiple repositories are configured, ChatGPT must call `repo.list` first, then pass the exact returned `repo_path`. Use `repo_path` only to choose the repository; file paths inside the selected repository remain relative.
+
+Recommended read order: use `repo.symbols` or `repo.search` first, then `repo.fetch` for the smallest useful line range. Use `repo.tree` only when the user asks about directory layout or what is inside a folder:
 
 ```text
-List configured repositories, then read the tree for repo_path D:\projects\app.
-Search repo_path D:\projects\app for createApp.
-Fetch app/main.ts lines 1-80 from repo_path D:\projects\app.
+Search for createApp.
+Find symbols named createApp.
+Fetch app/main.ts lines 1-80.
+For multiple repositories, call repo.list first and pass repo_path <repo_path-from-repo.list>.
+List app/ only if I ask about the app directory layout.
 ```
 
-Do not put `D:\project\file.ts` or `/Users/name/project/file.ts` into the tool's file `path` argument. The absolute path belongs in `repo_path`; the file path should be `file.ts` or `subdir/file.ts`.
+Do not put an absolute file path into the tool's file `path` argument. The absolute path belongs in `repo_path`; the file path should be `file.ts` or `subdir/file.ts`.
 
 The snapshot admits common source, config, and documentation files. It also admits project text files without standard extensions, such as `Dockerfile`, `Makefile`, `LICENSE`, `.gitignore`, and unknown-extension files that pass a lightweight text check.
 
-The repository view is snapshot-based. If files change after startup, ask ChatGPT to call `repo.refresh`; the server will scan the same authorized root again, build a new snapshot/index, and switch to it only after the refresh succeeds.
+The repository view is snapshot-based. Ask ChatGPT to call `repo.refresh` only when files changed after startup or an earlier result may be stale; the server will scan the same authorized root again, build a new snapshot/index, and switch to it only after the refresh succeeds.
 
 ## Tools
 
 | Tool | Purpose |
 |---|---|
 | `repo.list` | List configured repository names and exact `repo_path` values. |
-| `repo.tree` | List a bounded directory tree. |
+| `repo.symbols` | Find lightweight symbol definitions. |
 | `repo.search` | Search indexed text snippets. |
 | `repo.fetch` | Fetch a bounded line segment from one file. |
-| `repo.symbols` | Find lightweight symbol definitions. |
-| `repo.refresh` | Re-scan the authorized root and publish a fresh snapshot/index. |
+| `repo.tree` | List a bounded directory tree when directory layout is requested. |
+| `repo.refresh` | Re-scan the authorized root only when the repository changed or the snapshot may be stale. |
 
 All tools are non-destructive for your repository. `repo.refresh` updates only the server's in-memory snapshot/index. There is no shell execution, no write API（应用程序接口）, and no full repository export tool.
 
@@ -75,7 +81,7 @@ All tools are non-destructive for your repository. `repo.refresh` updates only t
 - system/unreadable directories are skipped and recorded
 - response size, session budget, tool call count, and tree depth are capped
 - returned repository content is marked `content_origin=repository_snapshot` and `instruction_trust=untrusted`
-- ChatGPT must choose from the configured `repo_path` whitelist; arbitrary paths are rejected
+- ChatGPT can use the single configured repository automatically, but arbitrary paths are still rejected; in multi-repository mode it must choose a configured `repo_path`
 
 More detail: [docs/SECURITY.md](docs/SECURITY.md).
 

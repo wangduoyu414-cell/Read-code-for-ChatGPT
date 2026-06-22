@@ -5,7 +5,9 @@
 
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { getToolRegistrations, isRegisteredTool, handleToolCall, setRuntimeState } from "../src/tools/registry.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { getToolRegistrations, isRegisteredTool, handleToolCall, setRuntimeState, setRuntimeStates } from "../src/tools/registry.js";
 import { isToolError } from "../src/errors.js";
 import { CONFIG } from "../src/config.js";
 import { createBudgetState } from "../src/security/budget.js";
@@ -13,19 +15,28 @@ import { startServer } from "../src/server.js";
 import { requestSnapshot, transitionState, attachManifest, clearRegistry } from "../src/snapshot/snapshot-registry.js";
 import { registerRepo, bindRepo, clearCatalog, normalizeRepoRootPath } from "../src/repo/repo-catalog.js";
 
+let runtimeRepoPath: string;
+let runtimeManifest: Parameters<typeof attachManifest>[1];
+
 beforeEach(() => {
   clearCatalog();
   clearRegistry();
   const repoPath = normalizeRepoRootPath("C:\\Example\\Repo");
+  runtimeRepoPath = repoPath;
   const repo = registerRepo(repoPath, { name: "example-repo" });
   bindRepo(repo.repo_id);
   const manifest = {
     snapshot_id: "snap-test",
     repo_id: repo.repo_id,
-    files: [],
+    files: [
+      { relative_path: "src/index.ts", file_hash: "h1", byte_count: 10, line_count: 1, language: "typescript", extension: ".ts", sensitive_detected: false, index_admitted: true },
+      { relative_path: "src/ui/Button.tsx", file_hash: "h2", byte_count: 10, line_count: 1, language: "typescript", extension: ".tsx", sensitive_detected: false, index_admitted: true },
+      { relative_path: "README.md", file_hash: "h3", byte_count: 10, line_count: 1, language: "markdown", extension: ".md", sensitive_detected: false, index_admitted: true },
+    ],
     excluded_files: [],
     policy_version: CONFIG.policyVersion,
   } as unknown as Parameters<typeof attachManifest>[1];
+  runtimeManifest = manifest;
   requestSnapshot("snap-test", repo.repo_id);
   transitionState("snap-test", "manifest_building");
   transitionState("snap-test", "filtering");
@@ -35,6 +46,7 @@ beforeEach(() => {
     rootDir: ".",
     repoPath,
     repoName: "example-repo",
+    repoDescription: "Example repository for tests.",
     budgetState: createBudgetState(),
     sessionSnapshotId: "snap-test",
   } as Parameters<typeof setRuntimeState>[0]);
@@ -74,19 +86,64 @@ await describe("Tool Dispatch (with runtime)", async () => {
   await it("lists configured repositories with exact repo_path values", async () => {
     const r = await handleToolCall("repo.list", {}, "audit-list");
     assert.equal(isToolError(r), false);
-    const data = r as { repositories: Array<{ name: string; repo_path: string; snapshot_id: string }> };
+    const data = r as { repositories: Array<{ name: string; description: string; repo_path: string; snapshot_id: string; file_count: number; top_dirs: string[]; primary_languages: string[] }> };
     assert.equal(data.repositories.length, 1);
     assert.equal(data.repositories[0]?.name, "example-repo");
+    assert.equal(data.repositories[0]?.description, "Example repository for tests.");
     assert.equal(data.repositories[0]?.repo_path, normalizeRepoRootPath("C:\\Example\\Repo"));
     assert.equal(data.repositories[0]?.snapshot_id, "snap-test");
+    assert.equal(data.repositories[0]?.file_count, 3);
+    assert.deepEqual(data.repositories[0]?.top_dirs, ["src"]);
+    assert.ok(data.repositories[0]?.primary_languages.includes("typescript"));
   });
 
-  await it("requires repo_path for repository tools", async () => {
+  await it("uses the only configured repository when repo_path is omitted", async () => {
+    const r = await handleToolCall("repo.tree", { path: ".", depth: 1, limit: 5 }, "audit-default-context");
+    assert.equal(isToolError(r), false);
+    assert.equal((r as Record<string, unknown>).repo_path, normalizeRepoRootPath("C:\\Example\\Repo"));
+    assert.equal((r as Record<string, unknown>).snapshot_id, "snap-test");
+  });
+
+  await it("requires repo_path when multiple repositories are configured", async () => {
+    const otherRepoPath = normalizeRepoRootPath("C:\\Example\\Other");
+    const otherRepo = registerRepo(otherRepoPath, { name: "other-repo" });
+    bindRepo(otherRepo.repo_id);
+    const otherManifest = {
+      snapshot_id: "snap-other",
+      repo_id: otherRepo.repo_id,
+      files: [],
+      excluded_files: [],
+      policy_version: CONFIG.policyVersion,
+    } as unknown as Parameters<typeof attachManifest>[1];
+    requestSnapshot("snap-other", otherRepo.repo_id);
+    transitionState("snap-other", "manifest_building");
+    transitionState("snap-other", "filtering");
+    attachManifest("snap-other", otherManifest);
+    setRuntimeStates([
+      {
+        manifest: runtimeManifest,
+        rootDir: ".",
+        repoPath: runtimeRepoPath,
+        repoName: "example-repo",
+        repoDescription: "Example repository for tests.",
+        budgetState: createBudgetState(),
+        sessionSnapshotId: "snap-test",
+      } as Parameters<typeof setRuntimeStates>[0][number],
+      {
+        manifest: otherManifest,
+        rootDir: ".",
+        repoPath: otherRepoPath,
+        repoName: "other-repo",
+        budgetState: createBudgetState(),
+        sessionSnapshotId: "snap-other",
+      } as Parameters<typeof setRuntimeStates>[0][number],
+    ]);
+
     const r = await handleToolCall("repo.tree", { path: ".", depth: 1, limit: 5 }, "audit-default-context");
     assert.equal(isToolError(r), true);
     if (isToolError(r)) {
       assert.equal(r.error_code, "access_denied");
-      assert.match(r.message, /repo_path/);
+      assert.match(r.message, /multiple repositories/);
       assert.equal("repo_id" in r, false);
       assert.equal(r.repo_path, "unknown");
     }
@@ -116,6 +173,42 @@ await describe("Tool Dispatch (with runtime)", async () => {
   await it("rejects snapshot mismatch across tools", async () => {
     const r = await handleToolCall("repo.search", { repo_path: "C:\\Example\\Repo", snapshot_id: "snap-other", query: "test" }, "audit-006");
     assert.equal(isToolError(r), true);
+  });
+});
+
+await describe("MCP response size behavior", async () => {
+  await it("keeps full tool data in structuredContent and short summary in content", async () => {
+    const { server, url } = await startServer(0);
+    const client = new Client({ name: "server-smoke-test", version: "0.0.0" });
+    const transport = new StreamableHTTPClientTransport(new URL(url));
+
+    try {
+      await client.connect(transport);
+      const tools = await client.listTools();
+      const toolsByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+      assert.equal(tools.tools.length, 6);
+      for (const name of ["repo.search", "repo.fetch", "repo.tree", "repo.symbols", "repo.refresh"]) {
+        const required = ((toolsByName.get(name)?.inputSchema as { required?: unknown[] } | undefined)?.required ?? []) as unknown[];
+        assert.equal(required.includes("repo_path"), false);
+      }
+
+      const result = await client.callTool({ name: "repo.list", arguments: {} });
+      assert.equal(result.isError, undefined);
+      assert.ok(result.structuredContent);
+      const text = result.content[0]?.type === "text" ? result.content[0].text : "";
+      const summary = JSON.parse(text) as { tool?: string; repositories?: number };
+      assert.equal(summary.tool, "repo.list");
+      assert.equal(summary.repositories, 1);
+      assert.notEqual(text, JSON.stringify(result.structuredContent));
+      assert.ok(Array.isArray((result.structuredContent as { repositories?: unknown }).repositories));
+
+      const tree = await client.callTool({ name: "repo.tree", arguments: { path: ".", depth: 1, limit: 5 } });
+      assert.equal(tree.isError, undefined);
+      assert.ok(Array.isArray((tree.structuredContent as { entries?: unknown }).entries));
+    } finally {
+      await client.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });
 

@@ -1,13 +1,13 @@
 # CHATGPT-LOCAL-REPO-001 Execution Cards（执行任务卡索引）
 
-状态：implementation_complete_with_multirepo_path_selection（实现已完成，并补充多仓库 `repo_path` 白名单选择）。
+状态：implementation_ready_with_exec014_latency_optimization（实现已完成基础链路，并新增 ChatGPT 调用耗时优化任务卡）。
 
 本目录把 `docs/design/task-card.md` 的设计拆成可执行任务卡。执行前必须先确认执行根目录：
 
 - 默认执行根目录：`<repo-root>/implementation`
 - 技术栈默认：`Node.js`（节点运行时） + `TypeScript`（类型脚本） + 官方 `@modelcontextprotocol/sdk`（模型上下文协议官方开发包）。
 - 第一版决策：无 `UI widget`（界面小组件），仅数据工具。
-- 当前实现范围：单用户、多仓库白名单、只读快照；ChatGPT（聊天模型）先调用 `repo.list`，再把精确 `repo_path`（仓库路径）传给读取工具。
+- 当前实现范围：单用户、多仓库白名单、只读快照；`EXEC-014` 进一步收紧 ChatGPT（聊天模型）的低成本读取路径，减少大 `repo.tree` 和重复大包返回。
 
 ## 执行顺序
 
@@ -27,6 +27,7 @@
 | 11 | `EXEC-011-chatgpt-dev-connector-hardening.md` | 硬化 ChatGPT 开发连接端点、传输生命周期和配置说明 | EXEC-010 |
 | 12 | `EXEC-012-chatgpt-default-context-connect-readiness.md` | 补齐 ChatGPT 开发接入默认 repo/snapshot 上下文和真实工具调用验证 | EXEC-011 |
 | 13 | `EXEC-013-doc-taxonomy-and-preconnect-chain.md` | 归类仓库文档、补根目录接入说明并重新验证 ChatGPT 接入前链路 | EXEC-012 |
+| 14 | `EXEC-014-chatgpt-call-latency-optimization.md` | 优化 ChatGPT 调用轮次、`repo.tree` 输出体积和 MCP 返回重复大包 | EXEC-013 |
 
 ## 全局硬边界
 
@@ -67,5 +68,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\execution-cards\validate-
 
 - `EXEC-012` 已按当时 13 张卡刷新 Claude（外部评审模型）复核回执，旧的 8-card（八卡）或 12-card（十二卡）回执不得作为当前闭环证据。
 - `EXEC-012` 已把子代理复核、Claude 复核、本地校验命令、跳过项和剩余阻塞写入 `execution-cards/execution-validation-report.md`。
-- `EXEC-013` 关闭前必须证明当前 14 张卡结构校验通过、文档归类后活动引用未断裂，并重新记录本地 MCP（模型上下文协议）接入前链路证据。
+- `EXEC-013` 关闭前必须证明当时 14 张卡结构校验通过、文档归类后活动引用未断裂，并重新记录本地 MCP（模型上下文协议）接入前链路证据。
+- `EXEC-014` 关闭前必须证明当前 15 张卡结构校验通过，并用 MCP SDK（模型上下文协议开发包）证明单仓库省略 `repo_path`、多仓库拒绝省略 `repo_path`、`repo.tree` 目录摘要、`content` 短摘要与 `structuredContent` 完整结果分离均生效。
 - 父级 `docs/reports/validation-report.md` 必须同步记录执行卡拆分状态，区分 `ready_for_ai_execution_gated`（任务可执行门禁就绪）与 runtime complete（运行时完成）。

@@ -19,20 +19,22 @@ ChatGPT receives bounded, non-destructive tools:
 
 | Tool | What it does |
 |---|---|
-| `repo.list` | List configured repository names and exact `repo_path` values. |
-| `repo.tree` | List bounded repository paths. |
+| `repo.list` | List configured repository names, descriptions, exact `repo_path` values, and lightweight summaries. |
+| `repo.symbols` | Find lightweight symbol definitions. |
 | `repo.search` | Search indexed text. |
 | `repo.fetch` | Read a bounded line range from one file. |
-| `repo.symbols` | Find lightweight symbol definitions. |
-| `repo.refresh` | Re-scan the authorized root and publish a fresh snapshot/index. |
+| `repo.tree` | List bounded repository paths for directory or layout questions. |
+| `repo.refresh` | Re-scan only when the repository changed or the snapshot may be stale. |
 
 The server rejects absolute paths, parent traversal, sensitive files, oversized responses, unsupported files, and unreadable/system directories. Repository content is returned as untrusted data.
 
 Readable repository files include common source, config, and documentation files, plus common project text files such as `Dockerfile`, `Makefile`, `LICENSE`, `.gitignore`, and unknown-extension files that pass a lightweight text check. Binary files and sensitive files stay excluded.
 
-ChatGPT must call `repo.list` before reading, then pass one returned `repo_path` to every repository tool. File paths inside a selected repository stay relative, such as `src/index.ts`.
+If one repository is configured, ChatGPT can read with `repo.search`, `repo.symbols`, `repo.fetch`, `repo.tree`, or `repo.refresh` without passing `repo_path`. If multiple repositories are configured, ChatGPT must call `repo.list` first and pass one exact returned `repo_path`. File paths inside a selected repository stay relative, such as `src/index.ts`.
 
-The repository view is snapshot-based. New or changed files are visible after ChatGPT calls `repo.refresh` with the chosen `repo_path`; failed refreshes keep the previous snapshot active.
+Recommended read order: use `repo.symbols` or `repo.search` first to find likely files or definitions, then use `repo.fetch` for the smallest useful line range. Use `repo.tree` only when the user asks about directory layout, file organization, or what is inside a folder.
+
+The repository view is snapshot-based. Call `repo.refresh` only when the repository has changed since the active snapshot or when a previous result may be stale; failed refreshes keep the previous snapshot active.
 
 ## 2. Install（安装）
 
@@ -89,35 +91,36 @@ Bind the smallest useful folder:
 node dist/startup.js --port 3100 --repo "<authorized-repo-path>"
 ```
 
-Good examples:
+For large repositories, bind the smallest project directory that covers the question, such as one app, package, service, or module. Avoid binding a whole drive, home directory, network share root, or full monorepo unless that entire scope is required.
+
+Placeholder examples:
 
 ```powershell
-node dist/startup.js --port 3100 --repo "D:\projects\my-app"
-node dist/startup.js --port 3100 --repo "C:\projects\my-app"
-node dist/startup.js --port 3100 --repo "/Users/me/projects/my-app"
+node dist/startup.js --port 3100 --repo "<project-root>"
+node dist/startup.js --port 3100 --repo "<workspace>/<project>"
+node dist/startup.js --port 3100 --repo "<monorepo>/<package-or-app>"
 ```
-
-Avoid binding a whole drive unless you understand the privacy and indexing cost.
 
 For multiple repositories, edit `<implementation-root>/server.config.json`:
 
 ```json
 {
   "repos": [
-    { "name": "app", "path": "D:\\projects\\app" },
-    { "name": "library", "path": "D:\\projects\\library" }
+    { "name": "app", "path": "<app-root>" },
+    { "name": "library", "path": "<library-root>" }
   ]
 }
 ```
 
-Inside ChatGPT, ask it to list repositories first, then use the exact `repo_path`:
+Inside ChatGPT, use the simple form for one repository and the explicit form for multiple repositories:
 
 ```text
-Call repo.list, then list the tree for repo_path D:\projects\app.
-Read docs/README.md from repo_path D:\projects\app.
-Search repo_path D:\projects\app for ConfigLoader.
-Fetch src/index.ts lines 1-100 from repo_path D:\projects\app.
-Refresh repo_path D:\projects\app, then search for the latest changed file.
+Search for ConfigLoader.
+Find symbols named ConfigLoader.
+Fetch src/index.ts lines 1-80.
+For multiple repositories, call repo.list first and use repo_path <repo_path-from-repo.list>.
+Only list the tree when I ask about folder structure.
+If the repository changed or the snapshot looks stale, refresh the selected repository, then search again.
 ```
 
 Use absolute paths only as `repo_path`. The file `path` argument must stay relative to that repository; `repo.fetch` will reject absolute file paths.
@@ -198,10 +201,10 @@ Get-CimInstance Win32_Process -Filter "name = 'node.exe'" |
 |---|---|
 | ChatGPT cannot reach `127.0.0.1` | Use Secure MCP Tunnel or another HTTPS route. |
 | OAuth setup fails | Current mode is `dev_local`; choose `No Authentication` for local testing. |
-| `repo.fetch` rejects `D:\...\file.ts` | Use `D:\...` only as `repo_path`; use a relative file `path` such as `src/index.ts`. |
-| Full drive scan is slow | Bind a specific project folder instead of `D:\` or `/`. |
+| `repo.fetch` rejects an absolute file path | Use the absolute value only as `repo_path`; use a relative file `path` such as `src/index.ts`. |
+| Large repository scans are slow | Bind the smallest useful project folder instead of a drive, home directory, network share root, or full monorepo. |
 | Port `3100` is busy | Start with `--port 3101` and update tunnel target. |
-| New files do not appear | Ask ChatGPT to call `repo.refresh`, then search or list the tree again. |
+| New files do not appear | Ask ChatGPT to call `repo.refresh` only for the selected `repo_path`, then use `repo.search` or `repo.symbols` again before fetching. |
 | GitHub reports a secret | Rotate the value, remove it from history, and replace examples with placeholders. |
 
 ## 10. Official References（官方参考）

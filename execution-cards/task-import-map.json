@@ -1,6 +1,6 @@
 {
   "schema_version": "2026-06-21-execution-cards-v3",
-  "status": "implementation_complete_with_exec013_doc_preconnect",
+  "status": "implementation_ready_with_exec014_latency_optimization",
   "execution_root": "implementation",
   "cards": [
     {"id":"EXEC-000","file":"EXEC-000-design-baseline-coverage-gate.md","depends_on":[]},
@@ -16,6 +16,7 @@
     {"id":"EXEC-010","file":"EXEC-010-e2e-validation-chatgpt-connector.md","depends_on":["EXEC-009"]},
     {"id":"EXEC-011","file":"EXEC-011-chatgpt-dev-connector-hardening.md","depends_on":["EXEC-010"]},
     {"id":"EXEC-012","file":"EXEC-012-chatgpt-default-context-connect-readiness.md","depends_on":["EXEC-011"]},
-    {"id":"EXEC-013","file":"EXEC-013-doc-taxonomy-and-preconnect-chain.md","depends_on":["EXEC-012"]}
+    {"id":"EXEC-013","file":"EXEC-013-doc-taxonomy-and-preconnect-chain.md","depends_on":["EXEC-012"]},
+    {"id":"EXEC-014","file":"EXEC-014-chatgpt-call-latency-optimization.md","depends_on":["EXEC-013"]}
   ]
 }

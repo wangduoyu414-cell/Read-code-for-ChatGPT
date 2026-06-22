@@ -166,22 +166,48 @@ export async function repoTreer(
   const prefix = normalizeTreePrefix(args.path, ctx.repo_id, ctx.snapshot_id, ctx.audit_id);
   if (typeof prefix !== "string") return prefix;
 
-  const entries = manifest.files
-    .filter((f) => {
-      if (!f.index_admitted) return false;
-      if (prefix && !f.relative_path.startsWith(prefix + "/") && f.relative_path !== prefix) return false;
-      const depthOk = f.relative_path.replace(prefix, "").split("/").filter(Boolean).length <= depth;
-      return depthOk;
-    })
-    .slice(0, limit)
-    .map((f) => ({
-      path: f.relative_path,
-      type: "file" as const,
-      language: f.language,
-      truncated: false,
-    }));
+  const entriesByPath = new Map<string, {
+    path: string;
+    type: "directory" | "file";
+    language?: string;
+    truncated: boolean;
+  }>();
 
-  const truncated = entries.length >= limit;
+  for (const file of manifest.files) {
+    if (!file.index_admitted) continue;
+    if (prefix && !file.relative_path.startsWith(prefix + "/") && file.relative_path !== prefix) continue;
+
+    const remainder = prefix && file.relative_path.startsWith(prefix + "/")
+      ? file.relative_path.slice(prefix.length + 1)
+      : prefix === file.relative_path
+        ? file.relative_path.split("/").pop() ?? file.relative_path
+        : file.relative_path;
+    const parts = remainder.split("/").filter(Boolean);
+    if (parts.length === 0) continue;
+
+    const directoryDepth = Math.min(depth, Math.max(0, parts.length - 1));
+    for (let i = 1; i <= directoryDepth; i++) {
+      const dirPath = prefix ? `${prefix}/${parts.slice(0, i).join("/")}` : parts.slice(0, i).join("/");
+      entriesByPath.set(dirPath, { path: dirPath, type: "directory", truncated: false });
+    }
+
+    if (parts.length <= depth) {
+      entriesByPath.set(file.relative_path, {
+        path: file.relative_path,
+        type: "file",
+        language: file.language,
+        truncated: false,
+      });
+    }
+  }
+
+  const allEntries = Array.from(entriesByPath.values()).sort((a, b) => {
+    const pathOrder = a.path.localeCompare(b.path);
+    if (pathOrder !== 0) return pathOrder;
+    return a.type.localeCompare(b.type);
+  });
+  const entries = allEntries.slice(0, limit);
+  const truncated = allEntries.length > limit;
 
   return wrapRepositoryContent({
     repo_path: args.repo_path,

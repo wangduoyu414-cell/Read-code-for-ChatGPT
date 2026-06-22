@@ -88,19 +88,29 @@ await describe("repo.fetch", async () => {
 
 await describe("repo.tree", async () => {
   await it("lists directory entries", async () => {
-    const r = await repoTreer({ repo_id: repoId, repo_path: rootDir, snapshot_id: snapId, depth: 2, limit: 50 }, manifest, budget);
+    const r = await repoTreer({ repo_id: repoId, repo_path: rootDir, snapshot_id: snapId, depth: 1, limit: 50 }, manifest, budget);
     if (isToolError(r)) { assert.fail(`Unexpected error: ${r.error_code}`); }
-    const data = r as { entries: Array<{ path: string }> };
+    const data = r as { entries: Array<{ path: string; type: string }> };
     assert.ok(data.entries.length > 0);
-    assert.ok(data.entries.some((e) => e.path.includes("src/")));
+    assert.ok(data.entries.some((e) => e.path === "src" && e.type === "directory"));
+    assert.ok(data.entries.some((e) => e.path === "tests" && e.type === "directory"));
   });
 
   await it("treats path dot as repository root", async () => {
-    const r = await repoTreer({ repo_id: repoId, repo_path: rootDir, snapshot_id: snapId, path: ".", depth: 2, limit: 50 }, manifest, budget);
+    const r = await repoTreer({ repo_id: repoId, repo_path: rootDir, snapshot_id: snapId, path: ".", depth: 1, limit: 50 }, manifest, budget);
     if (isToolError(r)) { assert.fail(`Unexpected error: ${r.error_code}`); }
-    const data = r as { entries: Array<{ path: string }> };
+    const data = r as { entries: Array<{ path: string; type: string }> };
     assert.ok(data.entries.length > 0);
-    assert.ok(data.entries.some((e) => e.path.includes("src/")));
+    assert.ok(data.entries.some((e) => e.path === "src" && e.type === "directory"));
+  });
+
+  await it("expands a targeted directory without flattening the whole repository", async () => {
+    const r = await repoTreer({ repo_id: repoId, repo_path: rootDir, snapshot_id: snapId, path: "src", depth: 1, limit: 50 }, manifest, budget);
+    if (isToolError(r)) { assert.fail(`Unexpected error: ${r.error_code}`); }
+    const data = r as { entries: Array<{ path: string; type: string }> };
+    assert.ok(data.entries.some((e) => e.path === "src/index.ts" && e.type === "file"));
+    assert.ok(data.entries.some((e) => e.path === "src/ui" && e.type === "directory"));
+    assert.equal(data.entries.some((e) => e.path === "src/ui/Button.tsx"), false);
   });
 
   await it("rejects path traversal", async () => {

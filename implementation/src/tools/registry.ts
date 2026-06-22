@@ -18,12 +18,13 @@ import { repoSearcher, repoFetcher, repoTreer, repoSymbols } from "./read-only-t
 // ─── Zod input schemas ──────────────────────────────────────────────────────
 
 const repoPathSchema = z.string().min(1);
+const optionalRepoPathSchema = repoPathSchema.optional();
 const snapshotSchema = z.string().min(1).optional();
 
 const listInputSchema = z.object({});
 
 const searchInputSchema = z.object({
-  repo_path: repoPathSchema,
+  repo_path: optionalRepoPathSchema,
   snapshot_id: snapshotSchema,
   query: z.string().min(1).max(CONFIG.tools.search.queryMaxLength),
   mode: z.enum(["text", "symbol", "hybrid"]).default("text"),
@@ -31,7 +32,7 @@ const searchInputSchema = z.object({
 });
 
 const fetchInputSchema = z.object({
-  repo_path: repoPathSchema,
+  repo_path: optionalRepoPathSchema,
   snapshot_id: snapshotSchema,
   path: z.string().min(1).max(CONFIG.tools.fetch.pathMaxLength),
   line_start: z.number().int().min(1),
@@ -40,7 +41,7 @@ const fetchInputSchema = z.object({
 });
 
 const treeInputSchema = z.object({
-  repo_path: repoPathSchema,
+  repo_path: optionalRepoPathSchema,
   snapshot_id: snapshotSchema,
   path: z.string().default("."),
   depth: z.number().int().min(0).max(CONFIG.tools.tree.maxDepth).default(CONFIG.tools.tree.defaultDepth),
@@ -48,7 +49,7 @@ const treeInputSchema = z.object({
 });
 
 const symbolsInputSchema = z.object({
-  repo_path: repoPathSchema,
+  repo_path: optionalRepoPathSchema,
   snapshot_id: snapshotSchema,
   query: z.string().min(1).max(CONFIG.tools.symbols.queryMaxLength),
   language: z.string().optional(),
@@ -56,7 +57,7 @@ const symbolsInputSchema = z.object({
 });
 
 const refreshInputSchema = z.object({
-  repo_path: repoPathSchema,
+  repo_path: optionalRepoPathSchema,
   snapshot_id: snapshotSchema,
   reason: z.string().min(1).max(CONFIG.tools.refresh.reasonMaxLength).optional(),
 });
@@ -165,6 +166,7 @@ export interface RuntimeState {
   rootDir: string;
   repoPath: string;
   repoName?: string;
+  repoDescription?: string;
   budgetState: ReturnType<typeof createBudgetState>;
   sessionSnapshotId: string; // enforces cross-tool snapshot consistency (SNAP-002)
 }
@@ -259,10 +261,28 @@ function optionalNonEmptyString(value: unknown, fieldName: "snapshot_id", fallba
 }
 
 function requiredRepoPath(value: unknown, auditId: string): string | ToolError {
+  if (value === undefined) {
+    if (runtimeStatesByPath.size === 1) {
+      const onlyState = runtimeStatesByPath.values().next().value as RuntimeState | undefined;
+      if (onlyState) return onlyState.repoPath;
+    }
+
+    return toolError(
+      "access_denied",
+      runtimeStatesByPath.size > 1
+        ? "repo_path is required when multiple repositories are configured. Call repo.list and pass an exact repo_path."
+        : "repo_path must be a non-empty string from repo.list.",
+      "unknown",
+      "unknown",
+      CONFIG.policyVersion,
+      auditId,
+    );
+  }
+
   if (typeof value !== "string" || value.length === 0) {
     return toolError(
       "access_denied",
-      "repo_path must be a non-empty string from repo.list.",
+      "repo_path must be a non-empty string when provided.",
       "unknown",
       "unknown",
       CONFIG.policyVersion,
@@ -293,6 +313,48 @@ function withPublicRepoPath(result: ToolError | Record<string, unknown>, repoPat
   const output: Record<string, unknown> = { ...result, repo_path: repoPath };
   delete output.repo_id;
   return output;
+}
+
+function summarizeTopDirs(manifest: unknown, limit = 12): string[] {
+  if (typeof manifest !== "object" || manifest === null || !("files" in manifest)) return [];
+  const files = (manifest as { files?: unknown }).files;
+  if (!Array.isArray(files)) return [];
+
+  const dirs = new Set<string>();
+  for (const file of files) {
+    if (typeof file !== "object" || file === null) continue;
+    const item = file as { relative_path?: unknown; index_admitted?: unknown };
+    if (item.index_admitted !== true || typeof item.relative_path !== "string") continue;
+    const [first] = item.relative_path.split("/");
+    if (first && item.relative_path.includes("/")) dirs.add(first);
+    if (dirs.size >= limit) break;
+  }
+  return Array.from(dirs).sort();
+}
+
+function summarizeLanguages(manifest: unknown, limit = 5): string[] {
+  if (typeof manifest !== "object" || manifest === null || !("files" in manifest)) return [];
+  const files = (manifest as { files?: unknown }).files;
+  if (!Array.isArray(files)) return [];
+
+  const counts = new Map<string, number>();
+  for (const file of files) {
+    if (typeof file !== "object" || file === null) continue;
+    const item = file as { language?: unknown; index_admitted?: unknown };
+    if (item.index_admitted !== true || typeof item.language !== "string" || item.language.length === 0) continue;
+    counts.set(item.language, (counts.get(item.language) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([language]) => language);
+}
+
+function countManifestFiles(manifest: unknown): number {
+  if (typeof manifest !== "object" || manifest === null || !("files" in manifest)) return 0;
+  const files = (manifest as { files?: unknown }).files;
+  return Array.isArray(files) ? files.length : 0;
 }
 
 function resolveRuntimeToolArgs(args: ToolCallArgs, state: RuntimeState, auditId: string): ResolvedToolCallArgs | ToolError {
@@ -328,8 +390,12 @@ function resolveRuntimeToolArgs(args: ToolCallArgs, state: RuntimeState, auditId
 function listRepositories(auditId: string): Record<string, unknown> {
   const repositories = getRuntimeStates().map((state) => ({
     name: state.repoName ?? state.repoPath,
+    description: state.repoDescription ?? "",
     repo_path: state.repoPath,
     snapshot_id: state.sessionSnapshotId,
+    file_count: countManifestFiles(state.manifest),
+    top_dirs: summarizeTopDirs(state.manifest),
+    primary_languages: summarizeLanguages(state.manifest),
   }));
 
   return {
