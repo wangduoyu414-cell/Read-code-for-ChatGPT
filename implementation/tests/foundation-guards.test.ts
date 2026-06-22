@@ -222,12 +222,15 @@ await describe("Secret Scanner", async () => {
     assert.equal(isSensitiveFileType(".env"), true);
     assert.equal(isSensitiveFileType(".env.local"), true);
     assert.equal(isSensitiveFileType("credentials.json"), true);
+    assert.equal(isSensitiveFileType("LLM模型APIKEY 可供测试使用.md"), true);
+    assert.equal(isSensitiveFileType("notes-token.md"), true);
   });
 
   await it("isSensitiveFileType passes normal files", () => {
     assert.equal(isSensitiveFileType("index.ts"), false);
     assert.equal(isSensitiveFileType("README.md"), false);
     assert.equal(isSensitiveFileType("src/utils.ts"), false);
+    assert.equal(isSensitiveFileType("tokenizer.ts"), false);
   });
 
   await it("screenContent rejects .pem files", () => {

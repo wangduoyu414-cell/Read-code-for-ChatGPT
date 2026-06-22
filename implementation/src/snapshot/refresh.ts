@@ -21,6 +21,7 @@ interface RefreshSnapshotParams {
   rootDir: string;
   budget: BudgetState;
   audit_id: string;
+  maxEntries?: number;
   publishSnapshot: (manifest: SnapshotManifest, snapshotId: string) => void;
 }
 
@@ -118,7 +119,7 @@ export async function refreshRepositorySnapshot(params: RefreshSnapshotParams): 
     transitionState(nextSnapshotId, "manifest_building");
     transitionState(nextSnapshotId, "filtering");
 
-    const { manifest } = ingestDirectory(params.rootDir, params.repo_id, nextSnapshotId);
+    const { manifest } = ingestDirectory(params.rootDir, params.repo_id, nextSnapshotId, { maxEntries: params.maxEntries });
     const attached = attachManifest(nextSnapshotId, manifest);
     if (!attached) {
       transitionState(nextSnapshotId, "revoked");

@@ -18,49 +18,62 @@ import { repoSearcher, repoFetcher, repoTreer, repoSymbols } from "./read-only-t
 // ─── Zod input schemas ──────────────────────────────────────────────────────
 
 const repoPathSchema = z.string().min(1);
-const optionalRepoPathSchema = repoPathSchema.optional();
 const snapshotSchema = z.string().min(1).optional();
 
 const listInputSchema = z.object({});
 
-const searchInputSchema = z.object({
-  repo_path: optionalRepoPathSchema,
-  snapshot_id: snapshotSchema,
-  query: z.string().min(1).max(CONFIG.tools.search.queryMaxLength),
-  mode: z.enum(["text", "symbol", "hybrid"]).default("text"),
-  limit: z.number().int().min(1).max(CONFIG.tools.search.maxLimit).default(CONFIG.tools.search.defaultLimit),
-});
+function repoPathFieldSchema(requireRepoPath: boolean) {
+  return requireRepoPath ? repoPathSchema : repoPathSchema.optional();
+}
 
-const fetchInputSchema = z.object({
-  repo_path: optionalRepoPathSchema,
-  snapshot_id: snapshotSchema,
-  path: z.string().min(1).max(CONFIG.tools.fetch.pathMaxLength),
-  line_start: z.number().int().min(1),
-  line_end: z.number().int().min(1),
-  purpose: z.string().min(1).max(CONFIG.tools.fetch.purposeMaxLength),
-});
+function searchInputSchema(requireRepoPath: boolean) {
+  return z.object({
+    repo_path: repoPathFieldSchema(requireRepoPath),
+    snapshot_id: snapshotSchema,
+    query: z.string().min(1).max(CONFIG.tools.search.queryMaxLength),
+    mode: z.enum(["text", "symbol", "hybrid"]).default("text"),
+    limit: z.number().int().min(1).max(CONFIG.tools.search.maxLimit).default(CONFIG.tools.search.defaultLimit),
+  });
+}
 
-const treeInputSchema = z.object({
-  repo_path: optionalRepoPathSchema,
-  snapshot_id: snapshotSchema,
-  path: z.string().default("."),
-  depth: z.number().int().min(0).max(CONFIG.tools.tree.maxDepth).default(CONFIG.tools.tree.defaultDepth),
-  limit: z.number().int().min(1).max(CONFIG.tools.tree.maxLimit).default(CONFIG.tools.tree.defaultLimit),
-});
+function fetchInputSchema(requireRepoPath: boolean) {
+  return z.object({
+    repo_path: repoPathFieldSchema(requireRepoPath),
+    snapshot_id: snapshotSchema,
+    path: z.string().min(1).max(CONFIG.tools.fetch.pathMaxLength),
+    line_start: z.number().int().min(1),
+    line_end: z.number().int().min(1),
+    purpose: z.string().min(1).max(CONFIG.tools.fetch.purposeMaxLength),
+  });
+}
 
-const symbolsInputSchema = z.object({
-  repo_path: optionalRepoPathSchema,
-  snapshot_id: snapshotSchema,
-  query: z.string().min(1).max(CONFIG.tools.symbols.queryMaxLength),
-  language: z.string().optional(),
-  limit: z.number().int().min(1).max(CONFIG.tools.symbols.maxLimit).default(CONFIG.tools.symbols.defaultLimit),
-});
+function treeInputSchema(requireRepoPath: boolean) {
+  return z.object({
+    repo_path: repoPathFieldSchema(requireRepoPath),
+    snapshot_id: snapshotSchema,
+    path: z.string().default("."),
+    depth: z.number().int().min(0).max(CONFIG.tools.tree.maxDepth).default(CONFIG.tools.tree.defaultDepth),
+    limit: z.number().int().min(1).max(CONFIG.tools.tree.maxLimit).default(CONFIG.tools.tree.defaultLimit),
+  });
+}
 
-const refreshInputSchema = z.object({
-  repo_path: optionalRepoPathSchema,
-  snapshot_id: snapshotSchema,
-  reason: z.string().min(1).max(CONFIG.tools.refresh.reasonMaxLength).optional(),
-});
+function symbolsInputSchema(requireRepoPath: boolean) {
+  return z.object({
+    repo_path: repoPathFieldSchema(requireRepoPath),
+    snapshot_id: snapshotSchema,
+    query: z.string().min(1).max(CONFIG.tools.symbols.queryMaxLength),
+    language: z.string().optional(),
+    limit: z.number().int().min(1).max(CONFIG.tools.symbols.maxLimit).default(CONFIG.tools.symbols.defaultLimit),
+  });
+}
+
+function refreshInputSchema(requireRepoPath: boolean) {
+  return z.object({
+    repo_path: repoPathFieldSchema(requireRepoPath),
+    snapshot_id: snapshotSchema,
+    reason: z.string().min(1).max(CONFIG.tools.refresh.reasonMaxLength).optional(),
+  });
+}
 
 // ─── Tool definitions ───────────────────────────────────────────────────────
 
@@ -76,87 +89,77 @@ export interface ToolRegistration {
   };
 }
 
-const TOOL_REGISTRATIONS: ToolRegistration[] = [
-  {
-    name: CONFIG.tools.list.name,
-    title: CONFIG.tools.list.title,
-    description: CONFIG.tools.list.description,
-    inputSchema: listInputSchema,
-    annotations: {
-      readOnlyHint: CONFIG.tools.readOnlyHint,
-      destructiveHint: CONFIG.tools.destructiveHint,
-      openWorldHint: CONFIG.tools.openWorldHint,
+function toolAnnotations(): ToolRegistration["annotations"] {
+  return {
+    readOnlyHint: CONFIG.tools.readOnlyHint,
+    destructiveHint: CONFIG.tools.destructiveHint,
+    openWorldHint: CONFIG.tools.openWorldHint,
+  };
+}
+
+function buildToolRegistrations(requireRepoPath: boolean): ToolRegistration[] {
+  return [
+    {
+      name: CONFIG.tools.list.name,
+      title: CONFIG.tools.list.title,
+      description: CONFIG.tools.list.description,
+      inputSchema: listInputSchema,
+      annotations: toolAnnotations(),
     },
-  },
-  {
-    name: CONFIG.tools.search.name,
-    title: CONFIG.tools.search.title,
-    description: CONFIG.tools.search.description,
-    inputSchema: searchInputSchema,
-    annotations: {
-      readOnlyHint: CONFIG.tools.readOnlyHint,
-      destructiveHint: CONFIG.tools.destructiveHint,
-      openWorldHint: CONFIG.tools.openWorldHint,
+    {
+      name: CONFIG.tools.search.name,
+      title: CONFIG.tools.search.title,
+      description: CONFIG.tools.search.description,
+      inputSchema: searchInputSchema(requireRepoPath),
+      annotations: toolAnnotations(),
     },
-  },
-  {
-    name: CONFIG.tools.fetch.name,
-    title: CONFIG.tools.fetch.title,
-    description: CONFIG.tools.fetch.description,
-    inputSchema: fetchInputSchema,
-    annotations: {
-      readOnlyHint: CONFIG.tools.readOnlyHint,
-      destructiveHint: CONFIG.tools.destructiveHint,
-      openWorldHint: CONFIG.tools.openWorldHint,
+    {
+      name: CONFIG.tools.fetch.name,
+      title: CONFIG.tools.fetch.title,
+      description: CONFIG.tools.fetch.description,
+      inputSchema: fetchInputSchema(requireRepoPath),
+      annotations: toolAnnotations(),
     },
-  },
-  {
-    name: CONFIG.tools.tree.name,
-    title: CONFIG.tools.tree.title,
-    description: CONFIG.tools.tree.description,
-    inputSchema: treeInputSchema,
-    annotations: {
-      readOnlyHint: CONFIG.tools.readOnlyHint,
-      destructiveHint: CONFIG.tools.destructiveHint,
-      openWorldHint: CONFIG.tools.openWorldHint,
+    {
+      name: CONFIG.tools.tree.name,
+      title: CONFIG.tools.tree.title,
+      description: CONFIG.tools.tree.description,
+      inputSchema: treeInputSchema(requireRepoPath),
+      annotations: toolAnnotations(),
     },
-  },
-  {
-    name: CONFIG.tools.symbols.name,
-    title: CONFIG.tools.symbols.title,
-    description: CONFIG.tools.symbols.description,
-    inputSchema: symbolsInputSchema,
-    annotations: {
-      readOnlyHint: CONFIG.tools.readOnlyHint,
-      destructiveHint: CONFIG.tools.destructiveHint,
-      openWorldHint: CONFIG.tools.openWorldHint,
+    {
+      name: CONFIG.tools.symbols.name,
+      title: CONFIG.tools.symbols.title,
+      description: CONFIG.tools.symbols.description,
+      inputSchema: symbolsInputSchema(requireRepoPath),
+      annotations: toolAnnotations(),
     },
-  },
-  {
-    name: CONFIG.tools.refresh.name,
-    title: CONFIG.tools.refresh.title,
-    description: CONFIG.tools.refresh.description,
-    inputSchema: refreshInputSchema,
-    annotations: {
-      readOnlyHint: CONFIG.tools.readOnlyHint,
-      destructiveHint: CONFIG.tools.destructiveHint,
-      openWorldHint: CONFIG.tools.openWorldHint,
+    {
+      name: CONFIG.tools.refresh.name,
+      title: CONFIG.tools.refresh.title,
+      description: CONFIG.tools.refresh.description,
+      inputSchema: refreshInputSchema(requireRepoPath),
+      annotations: toolAnnotations(),
     },
-  },
-];
+  ];
+}
 
 // ─── Registry API ───────────────────────────────────────────────────────────
 
 export function getToolRegistrations(): ToolRegistration[] {
-  return TOOL_REGISTRATIONS;
+  return buildToolRegistrations(false);
+}
+
+export function getToolRegistrationsForRuntime(): ToolRegistration[] {
+  return buildToolRegistrations(getRuntimeStates().length > 1);
 }
 
 export function getToolRegistration(name: string): ToolRegistration | undefined {
-  return TOOL_REGISTRATIONS.find((t) => t.name === name);
+  return getToolRegistrations().find((t) => t.name === name);
 }
 
 export function isRegisteredTool(name: string): boolean {
-  return TOOL_REGISTRATIONS.some((t) => t.name === name);
+  return getToolRegistrations().some((t) => t.name === name);
 }
 
 // ─── Runtime state (dev mode) ───────────────────────────────────────────────
@@ -169,6 +172,7 @@ export interface RuntimeState {
   repoDescription?: string;
   budgetState: ReturnType<typeof createBudgetState>;
   sessionSnapshotId: string; // enforces cross-tool snapshot consistency (SNAP-002)
+  snapshotMaxEntries?: number;
 }
 
 let runtimeState: RuntimeState | null = null;
@@ -532,6 +536,7 @@ export async function handleToolCall(
         rootDir,
         budget: state.budgetState,
         audit_id: auditId,
+        maxEntries: state.snapshotMaxEntries,
         publishSnapshot: (manifest, snapshotId) => publishRuntimeSnapshot(resolvedArgs.repo_path, manifest, snapshotId),
       });
       break;

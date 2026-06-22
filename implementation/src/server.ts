@@ -12,7 +12,7 @@ import type { AddressInfo } from "node:net";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONFIG } from "./config.js";
-import { getToolRegistrations, handleToolCall, setRuntimeStates, getRuntimeState } from "./tools/registry.js";
+import { getToolRegistrationsForRuntime, handleToolCall, setRuntimeStates, getRuntimeState } from "./tools/registry.js";
 import { isToolError } from "./errors.js";
 import { generateAuditId } from "./audit/audit-id.js";
 import { buildAuthChallenge, buildAuthorizationServerUnavailable, buildConnectorMeta, buildProtectedResourceMetadata } from "./auth/oauth-metadata.js";
@@ -71,7 +71,7 @@ function createMcpServer(): McpServer {
   );
 
   // Register all tools with real handlers.
-  for (const reg of getToolRegistrations()) {
+  for (const reg of getToolRegistrationsForRuntime()) {
     mcpServer.registerTool(
       reg.name,
       {
@@ -133,6 +133,7 @@ export interface InitRuntimeParams {
     repoName?: string;
     repoDescription?: string;
     snapshotId: string;
+    snapshotMaxEntries?: number;
   }>;
 }
 
@@ -146,6 +147,7 @@ export function initRuntime(params: InitRuntimeParams): void {
     repoDescription: repo.repoDescription,
     budgetState,
     sessionSnapshotId: repo.snapshotId,
+    snapshotMaxEntries: repo.snapshotMaxEntries,
   })));
 }
 

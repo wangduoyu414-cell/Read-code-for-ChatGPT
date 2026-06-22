@@ -27,7 +27,7 @@ interface StartupConfig {
   server: { port: number; host: string };
   repo?: { path: string; description?: string; name?: string };
   repos: Array<{ name: string; path: string; description?: string }>;
-  snapshot: { autoCreate: boolean; expireHours: number };
+  snapshot: { autoCreate: boolean; expireHours: number; maxEntries?: number };
 }
 
 function repoNameFromPath(repoPath: string): string {
@@ -91,9 +91,10 @@ interface InitializedRepo {
   repoName: string;
   repoDescription?: string;
   snapshotId: string;
+  snapshotMaxEntries?: number;
 }
 
-function initRepoAndSnapshot(repoConfig: { name: string; path: string; description?: string }): InitializedRepo | null {
+function initRepoAndSnapshot(repoConfig: { name: string; path: string; description?: string }, snapshotConfig: StartupConfig["snapshot"]): InitializedRepo | null {
   const rootDir = normalizeRepoRootPath(repoConfig.path);
 
   if (!existsSync(rootDir)) {
@@ -112,7 +113,7 @@ function initRepoAndSnapshot(repoConfig: { name: string; path: string; descripti
   transitionState(snapId, "manifest_building");
   transitionState(snapId, "filtering");
 
-  const { manifest, warnings } = ingestDirectory(rootDir, repo.repo_id, snapId);
+  const { manifest, warnings } = ingestDirectory(rootDir, repo.repo_id, snapId, { maxEntries: snapshotConfig.maxEntries });
   if (warnings.length > 0) {
     console.log(JSON.stringify({ event: "snapshot_warnings", count: warnings.length, warnings: warnings.slice(0, 10) }));
   }
@@ -130,7 +131,7 @@ function initRepoAndSnapshot(repoConfig: { name: string; path: string; descripti
   const indexResult = runIndexer(manifest, rootDir, { clearExisting: false });
   console.log(JSON.stringify({ event: "index_complete", ...indexResult }));
 
-  return { manifest, rootDir, repoPath: repo.repo_path, repoName: repoConfig.name, repoDescription: repoConfig.description, snapshotId: snapId };
+  return { manifest, rootDir, repoPath: repo.repo_path, repoName: repoConfig.name, repoDescription: repoConfig.description, snapshotId: snapId, snapshotMaxEntries: snapshotConfig.maxEntries };
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -165,7 +166,7 @@ async function main() {
 
   const initResults: InitializedRepo[] = [];
   for (const repoConfig of config.repos) {
-    const initResult = initRepoAndSnapshot(repoConfig);
+    const initResult = initRepoAndSnapshot(repoConfig, config.snapshot);
     if (initResult) initResults.push(initResult);
   }
 
@@ -183,6 +184,7 @@ async function main() {
       repoName: repo.repoName,
       repoDescription: repo.repoDescription,
       snapshotId: repo.snapshotId,
+      snapshotMaxEntries: repo.snapshotMaxEntries,
     })),
   });
 

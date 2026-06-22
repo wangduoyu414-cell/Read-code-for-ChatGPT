@@ -84,11 +84,14 @@ export function isSensitiveFileType(filename: string): boolean {
     "credentials.json", "service-account.json", "secrets.yaml",
     "secrets.yml", "config.json.enc",
   ];
+  const sensitiveNamePattern = /(^|[._\-\s])(api[_-]?key|apikey|secret|secrets|token|credentials?|password|passwd)([._\-\s]|$)/i;
 
   const base = lower.split("/").pop() ?? lower;
 
   if (sensitiveNames.some((n) => base === n)) return true;
   if (sensitiveExtensions.some((ext) => base.endsWith(ext))) return true;
+  if (base.includes("apikey") || base.includes("api_key") || base.includes("api-key")) return true;
+  if (sensitiveNamePattern.test(base)) return true;
 
   return false;
 }

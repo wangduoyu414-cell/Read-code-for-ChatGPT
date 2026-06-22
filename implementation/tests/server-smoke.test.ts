@@ -210,6 +210,62 @@ await describe("MCP response size behavior", async () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
+
+  await it("marks repo_path required in MCP schema when multiple repositories are configured", async () => {
+    const otherRepoPath = normalizeRepoRootPath("C:\\Example\\Other");
+    const otherRepo = registerRepo(otherRepoPath, { name: "other-repo" });
+    bindRepo(otherRepo.repo_id);
+    const otherManifest = {
+      snapshot_id: "snap-other",
+      repo_id: otherRepo.repo_id,
+      files: [],
+      excluded_files: [],
+      policy_version: CONFIG.policyVersion,
+    } as unknown as Parameters<typeof attachManifest>[1];
+    requestSnapshot("snap-other", otherRepo.repo_id);
+    transitionState("snap-other", "manifest_building");
+    transitionState("snap-other", "filtering");
+    attachManifest("snap-other", otherManifest);
+    setRuntimeStates([
+      {
+        manifest: runtimeManifest,
+        rootDir: ".",
+        repoPath: runtimeRepoPath,
+        repoName: "example-repo",
+        repoDescription: "Example repository for tests.",
+        budgetState: createBudgetState(),
+        sessionSnapshotId: "snap-test",
+      } as Parameters<typeof setRuntimeStates>[0][number],
+      {
+        manifest: otherManifest,
+        rootDir: ".",
+        repoPath: otherRepoPath,
+        repoName: "other-repo",
+        budgetState: createBudgetState(),
+        sessionSnapshotId: "snap-other",
+      } as Parameters<typeof setRuntimeStates>[0][number],
+    ]);
+
+    const { server, url } = await startServer(0);
+    const client = new Client({ name: "server-smoke-test", version: "0.0.0" });
+    const transport = new StreamableHTTPClientTransport(new URL(url));
+
+    try {
+      await client.connect(transport);
+      const tools = await client.listTools();
+      const toolsByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
+      const listRequired = ((toolsByName.get("repo.list")?.inputSchema as { required?: unknown[] } | undefined)?.required ?? []) as unknown[];
+      assert.equal(listRequired.includes("repo_path"), false);
+
+      for (const name of ["repo.search", "repo.fetch", "repo.tree", "repo.symbols", "repo.refresh"]) {
+        const required = ((toolsByName.get(name)?.inputSchema as { required?: unknown[] } | undefined)?.required ?? []) as unknown[];
+        assert.equal(required.includes("repo_path"), true);
+      }
+    } finally {
+      await client.close();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
 });
 
 await describe("Config", async () => {

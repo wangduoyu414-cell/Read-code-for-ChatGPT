@@ -98,6 +98,47 @@ await describe("snapshot ingest", async () => {
     }
   });
 
+  await it("skips common local cache and virtual environment directories by name", () => {
+    const root = makeTempRepo();
+    try {
+      for (const dir of [".claude", ".venv", ".pytest_cache", ".tmp_agent", "tmp_probe", "dist"]) {
+        mkdirSync(join(root, dir), { recursive: true });
+        writeFileSync(join(root, dir, "hidden.md"), "hidden");
+      }
+      writeFileSync(join(root, "keep.md"), "visible");
+
+      const { manifest } = ingestDirectory(root, "repo-test", "snap-test");
+
+      assert.deepEqual(manifest.files.map((f) => f.relative_path), ["keep.md"]);
+      assert.ok(manifest.excluded_files.some((f) => f.relative_path === ".claude"));
+      assert.ok(manifest.excluded_files.some((f) => f.relative_path === ".venv"));
+      assert.ok(manifest.excluded_files.some((f) => f.relative_path === ".tmp_agent"));
+      assert.ok(manifest.excluded_files.some((f) => f.relative_path === "tmp_probe"));
+      assert.ok(manifest.excluded_files.some((f) => f.relative_path === "dist"));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  await it("stops traversal when maxEntries is reached", () => {
+    const root = makeTempRepo();
+    try {
+      mkdirSync(join(root, "a"), { recursive: true });
+      mkdirSync(join(root, "b"), { recursive: true });
+      writeFileSync(join(root, "a", "one.md"), "one");
+      writeFileSync(join(root, "b", "two.md"), "two");
+      writeFileSync(join(root, "three.md"), "three");
+
+      const { manifest, warnings } = ingestDirectory(root, "repo-test", "snap-test", { maxEntries: 2 });
+
+      assert.ok(manifest.excluded_files.some((f) => f.reason.startsWith("snapshot traversal limit reached:")));
+      assert.ok(warnings.some((w) => w.includes("EXCLUDED(limit):")));
+      assert.ok(manifest.files.length <= 2);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   await it(
     "records unreadable directories without aborting the snapshot",
     { skip: process.platform === "win32" ? "POSIX permissions are not portable on Windows." : false },

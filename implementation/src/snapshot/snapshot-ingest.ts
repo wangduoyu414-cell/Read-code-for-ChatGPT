@@ -15,12 +15,43 @@ import { generateAuditId } from "../audit/audit-id.js";
 const BLOCKED_DIRECTORY_REASONS = new Map<string, string>([
   [".git", "directory block: .git"],
   [".ssh", "directory block: .ssh"],
+  [".claude", "local agent directory block: .claude"],
+  [".codex", "local agent directory block: .codex"],
+  [".vscode", "editor directory block: .vscode"],
+  [".idea", "editor directory block: .idea"],
   ["node_modules", "directory block: node_modules"],
+  [".venv", "virtual environment directory block: .venv"],
+  ["venv", "virtual environment directory block: venv"],
+  ["env", "virtual environment directory block: env"],
+  ["__pycache__", "cache directory block: __pycache__"],
+  [".pytest_cache", "cache directory block: .pytest_cache"],
+  [".mypy_cache", "cache directory block: .mypy_cache"],
+  [".ruff_cache", "cache directory block: .ruff_cache"],
+  [".tox", "test environment directory block: .tox"],
+  [".nox", "test environment directory block: .nox"],
+  [".uv-cache", "cache directory block: .uv-cache"],
+  [".cache", "cache directory block: .cache"],
+  [".turbo", "cache directory block: .turbo"],
+  [".parcel-cache", "cache directory block: .parcel-cache"],
+  [".next", "build output directory block: .next"],
+  [".nuxt", "build output directory block: .nuxt"],
+  [".svelte-kit", "build output directory block: .svelte-kit"],
+  ["dist", "build output directory block: dist"],
+  ["build", "build output directory block: build"],
+  ["coverage", "test output directory block: coverage"],
+  ["tmp", "temporary directory block: tmp"],
+  ["temp", "temporary directory block: temp"],
+  [".tmp", "temporary directory block: .tmp"],
   ["$recycle.bin", "system directory block: $RECYCLE.BIN"],
   ["system volume information", "system directory block: System Volume Information"],
   ["recovery", "system directory block: Recovery"],
   ["config.msi", "system directory block: Config.Msi"],
 ]);
+
+const BLOCKED_DIRECTORY_PREFIX_REASONS: ReadonlyArray<[string, string]> = [
+  [".tmp_", "temporary directory block: .tmp_*"],
+  ["tmp_", "temporary directory block: tmp_*"],
+];
 
 const ALLOWED_EXTENSIONS = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs", ".java", ".kt",
@@ -64,7 +95,15 @@ function languageFromExt(ext: string): string {
 }
 
 function blockedDirectoryReason(name: string): string | undefined {
-  return BLOCKED_DIRECTORY_REASONS.get(name.toLowerCase());
+  const lower = name.toLowerCase();
+  const exactReason = BLOCKED_DIRECTORY_REASONS.get(lower);
+  if (exactReason !== undefined) return exactReason;
+
+  for (const [prefix, reason] of BLOCKED_DIRECTORY_PREFIX_REASONS) {
+    if (lower.startsWith(prefix)) return reason;
+  }
+
+  return undefined;
 }
 
 function isKnownTextFilename(name: string): boolean {
@@ -102,12 +141,21 @@ export interface IngestResult {
   warnings: string[];
 }
 
-export function ingestDirectory(rootDir: string, repo_id: string, snapshotIdParam?: string): IngestResult {
+export interface IngestOptions {
+  maxEntries?: number;
+}
+
+export function ingestDirectory(rootDir: string, repo_id: string, snapshotIdParam?: string, options: IngestOptions = {}): IngestResult {
   const snapId = snapshotIdParam ?? `snap-${Date.now()}-${randomUUID().slice(0, 8)}`;
   const files: ManifestFile[] = [];
   const excluded: Array<{ relative_path: string; reason: string }> = [];
   const warnings: string[] = [];
   const auditId = generateAuditId();
+  const maxEntries = options.maxEntries !== undefined && Number.isFinite(options.maxEntries) && options.maxEntries > 0
+    ? Math.floor(options.maxEntries)
+    : undefined;
+  let visitedEntries = 0;
+  let traversalLimitReached = false;
 
   function repoRelativePath(abs: string): string {
     const rel = relative(rootDir, abs).replace(/\\/g, "/");
@@ -121,7 +169,20 @@ export function ingestDirectory(rootDir: string, repo_id: string, snapshotIdPara
     }
   }
 
+  function shouldStopTraversal(relative_path: string): boolean {
+    if (traversalLimitReached) return true;
+    if (maxEntries === undefined) return false;
+    visitedEntries += 1;
+    if (visitedEntries <= maxEntries) return false;
+
+    traversalLimitReached = true;
+    exclude(relative_path, `snapshot traversal limit reached: ${visitedEntries} > ${maxEntries}`, "limit");
+    return true;
+  }
+
   function walk(dir: string) {
+    if (traversalLimitReached) return;
+
     let entries;
     try {
       entries = readdirSync(dir, { withFileTypes: true });
@@ -133,6 +194,8 @@ export function ingestDirectory(rootDir: string, repo_id: string, snapshotIdPara
     for (const ent of entries) {
       const abs = join(dir, ent.name);
       const rel = repoRelativePath(abs);
+
+      if (shouldStopTraversal(rel)) return;
 
       if (ent.isDirectory()) {
         const reason = blockedDirectoryReason(ent.name);
