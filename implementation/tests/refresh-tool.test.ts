@@ -52,7 +52,7 @@ function initializeRuntime(rootDir: string) {
   return { repoId: repo.repo_id, repoPath, snapId, budgetState };
 }
 
-await describe("repo.refresh", async () => {
+await describe("repo_refresh", async () => {
   await it("refreshes the manifest and index without resetting budget state", async () => {
     const root = makeTempRepo();
     try {
@@ -64,11 +64,11 @@ await describe("repo.refresh", async () => {
 
       writeFileSync(join(root, "new.local"), "fresh-marker=true\n");
 
-      const beforeRefresh = await handleToolCall("repo.search", { repo_path: repoPath, query: "fresh-marker", limit: 10 }, "audit-before-refresh");
+      const beforeRefresh = await handleToolCall("repo_search", { repo_path: repoPath, query: "fresh-marker", limit: 10 }, "audit-before-refresh");
       assert.equal(isToolError(beforeRefresh), false);
       assert.equal((beforeRefresh as { hits: unknown[] }).hits.length, 0);
 
-      const refresh = await handleToolCall("repo.refresh", { repo_path: repoPath, reason: "test" }, "audit-refresh");
+      const refresh = await handleToolCall("repo_refresh", { repo_path: repoPath, reason: "test" }, "audit-refresh");
       assert.equal(isToolError(refresh), false);
       const refreshData = refresh as { repo_path: string; snapshot_id: string; previous_snapshot_id: string; refreshed: boolean; files: number };
       assert.equal(refreshData.repo_path, repoPath);
@@ -83,7 +83,7 @@ await describe("repo.refresh", async () => {
       assert.equal(stateAfter.budgetState, budgetBefore);
       assert.ok(stateAfter.budgetState.toolCallCount >= 2);
 
-      const afterRefresh = await handleToolCall("repo.search", { repo_path: repoPath, query: "fresh-marker", limit: 10 }, "audit-after-refresh");
+      const afterRefresh = await handleToolCall("repo_search", { repo_path: repoPath, query: "fresh-marker", limit: 10 }, "audit-after-refresh");
       assert.equal(isToolError(afterRefresh), false);
       const hits = (afterRefresh as { hits: Array<{ path: string; snapshot_id: string }> }).hits;
       assert.equal(hits.length, 1);
@@ -104,7 +104,7 @@ await describe("repo.refresh", async () => {
 
       rmSync(root, { recursive: true, force: true });
 
-      const refresh = await handleToolCall("repo.refresh", { repo_path: repoPath }, "audit-refresh-missing-root");
+      const refresh = await handleToolCall("repo_refresh", { repo_path: repoPath }, "audit-refresh-missing-root");
       assert.equal(isToolError(refresh), true);
       if (isToolError(refresh)) {
         assert.equal(refresh.error_code, "internal_error");
@@ -117,7 +117,7 @@ await describe("repo.refresh", async () => {
       assert.equal(stateAfter.manifest, stateBefore.manifest);
       assert.equal(stateAfter.budgetState, stateBefore.budgetState);
 
-      const search = await handleToolCall("repo.search", { repo_path: repoPath, query: "old-marker", limit: 10 }, "audit-search-after-failed-refresh");
+      const search = await handleToolCall("repo_search", { repo_path: repoPath, query: "old-marker", limit: 10 }, "audit-search-after-failed-refresh");
       assert.equal(isToolError(search), false);
       assert.equal((search as { hits: unknown[] }).hits.length, 1);
     } finally {

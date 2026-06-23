@@ -13,7 +13,33 @@ import type { SnapshotManifest } from "../snapshot/manifest.js";
 import { refreshRepositorySnapshot } from "../snapshot/refresh.js";
 import { normalizeRepoRootPath, repoPathCompareKey } from "../repo/repo-catalog.js";
 // Real tool implementations
-import { repoSearcher, repoFetcher, repoTreer, repoSymbols } from "./read-only-tools.js";
+import { repoSearcher, repoFiles, repoFetcher, repoTreer, repoSymbols } from "./read-only-tools.js";
+
+const LEGACY_TOOL_ALIASES = new Map<string, string>([
+  ["read_code/api_tool", CONFIG.tools.readCode.name],
+  ["read_code.api_tool", CONFIG.tools.readCode.name],
+  ["repo.list", CONFIG.tools.list.name],
+  ["repo.search", CONFIG.tools.search.name],
+  ["repo.files", CONFIG.tools.files.name],
+  ["repo.fetch", CONFIG.tools.fetch.name],
+  ["repo.tree", CONFIG.tools.tree.name],
+  ["repo.symbols", CONFIG.tools.symbols.name],
+  ["repo.refresh", CONFIG.tools.refresh.name],
+]);
+
+function canonicalToolName(toolName: string): string {
+  return LEGACY_TOOL_ALIASES.get(toolName) ?? toolName;
+}
+
+function chatGptToolMeta(invoking: string, invoked: string): Record<string, unknown> {
+  return {
+    securitySchemes: [{ type: "noauth" }],
+    ui: { visibility: ["model", "app"] },
+    "openai/visibility": "public",
+    "openai/toolInvocation/invoking": invoking,
+    "openai/toolInvocation/invoked": invoked,
+  };
+}
 
 // ─── Zod input schemas ──────────────────────────────────────────────────────
 
@@ -21,6 +47,21 @@ const repoPathSchema = z.string().min(1);
 const snapshotSchema = z.string().min(1).optional();
 
 const listInputSchema = z.object({});
+const apiToolObjectSchema = z.record(z.string(), z.unknown());
+
+const apiToolInputSchema = z.object({
+  tool: z.string().optional(),
+  tool_name: z.string().optional(),
+  name: z.string().optional(),
+  operation: z.string().optional(),
+  action: z.string().optional(),
+  method: z.string().optional(),
+  endpoint: z.string().optional(),
+  arguments: apiToolObjectSchema.optional(),
+  args: apiToolObjectSchema.optional(),
+  params: apiToolObjectSchema.optional(),
+  input: apiToolObjectSchema.optional(),
+}).passthrough();
 
 function repoPathFieldSchema(requireRepoPath: boolean) {
   return requireRepoPath ? repoPathSchema : repoPathSchema.optional();
@@ -44,6 +85,19 @@ function fetchInputSchema(requireRepoPath: boolean) {
     line_start: z.number().int().min(1),
     line_end: z.number().int().min(1),
     purpose: z.string().min(1).max(CONFIG.tools.fetch.purposeMaxLength),
+  });
+}
+
+function filesInputSchema(requireRepoPath: boolean) {
+  return z.object({
+    repo_path: repoPathFieldSchema(requireRepoPath),
+    snapshot_id: snapshotSchema,
+    prefix: z.string().max(CONFIG.tools.files.prefixMaxLength).optional(),
+    suffixes: z.array(z.string().min(1).max(32)).max(CONFIG.tools.files.filterMaxItems).optional(),
+    languages: z.array(z.string().min(1).max(64)).max(CONFIG.tools.files.filterMaxItems).optional(),
+    states: z.array(z.enum(["indexed", "fetchable_unindexed", "excluded"])).max(3).optional(),
+    cursor: z.string().max(CONFIG.tools.files.cursorMaxLength).optional(),
+    limit: z.number().int().min(1).max(CONFIG.tools.files.maxLimit).default(CONFIG.tools.files.defaultLimit),
   });
 }
 
@@ -87,6 +141,7 @@ export interface ToolRegistration {
     destructiveHint: boolean;
     openWorldHint: boolean;
   };
+  _meta: Record<string, unknown>;
 }
 
 function toolAnnotations(): ToolRegistration["annotations"] {
@@ -100,11 +155,28 @@ function toolAnnotations(): ToolRegistration["annotations"] {
 function buildToolRegistrations(requireRepoPath: boolean): ToolRegistration[] {
   return [
     {
+      name: CONFIG.tools.readCode.name,
+      title: CONFIG.tools.readCode.title,
+      description: CONFIG.tools.readCode.description,
+      inputSchema: apiToolInputSchema,
+      annotations: toolAnnotations(),
+      _meta: chatGptToolMeta("Reading repository", "Repository response ready"),
+    },
+    {
+      name: CONFIG.tools.apiTool.name,
+      title: CONFIG.tools.apiTool.title,
+      description: CONFIG.tools.apiTool.description,
+      inputSchema: apiToolInputSchema,
+      annotations: toolAnnotations(),
+      _meta: chatGptToolMeta("Reading repository", "Repository response ready"),
+    },
+    {
       name: CONFIG.tools.list.name,
       title: CONFIG.tools.list.title,
       description: CONFIG.tools.list.description,
       inputSchema: listInputSchema,
       annotations: toolAnnotations(),
+      _meta: chatGptToolMeta("Listing repositories", "Repositories listed"),
     },
     {
       name: CONFIG.tools.search.name,
@@ -112,6 +184,15 @@ function buildToolRegistrations(requireRepoPath: boolean): ToolRegistration[] {
       description: CONFIG.tools.search.description,
       inputSchema: searchInputSchema(requireRepoPath),
       annotations: toolAnnotations(),
+      _meta: chatGptToolMeta("Searching repository", "Search complete"),
+    },
+    {
+      name: CONFIG.tools.files.name,
+      title: CONFIG.tools.files.title,
+      description: CONFIG.tools.files.description,
+      inputSchema: filesInputSchema(requireRepoPath),
+      annotations: toolAnnotations(),
+      _meta: chatGptToolMeta("Listing repository files", "Repository files ready"),
     },
     {
       name: CONFIG.tools.fetch.name,
@@ -119,6 +200,7 @@ function buildToolRegistrations(requireRepoPath: boolean): ToolRegistration[] {
       description: CONFIG.tools.fetch.description,
       inputSchema: fetchInputSchema(requireRepoPath),
       annotations: toolAnnotations(),
+      _meta: chatGptToolMeta("Reading file segment", "File segment ready"),
     },
     {
       name: CONFIG.tools.tree.name,
@@ -126,6 +208,7 @@ function buildToolRegistrations(requireRepoPath: boolean): ToolRegistration[] {
       description: CONFIG.tools.tree.description,
       inputSchema: treeInputSchema(requireRepoPath),
       annotations: toolAnnotations(),
+      _meta: chatGptToolMeta("Reading repository tree", "Repository tree ready"),
     },
     {
       name: CONFIG.tools.symbols.name,
@@ -133,6 +216,7 @@ function buildToolRegistrations(requireRepoPath: boolean): ToolRegistration[] {
       description: CONFIG.tools.symbols.description,
       inputSchema: symbolsInputSchema(requireRepoPath),
       annotations: toolAnnotations(),
+      _meta: chatGptToolMeta("Finding symbols", "Symbols ready"),
     },
     {
       name: CONFIG.tools.refresh.name,
@@ -140,6 +224,7 @@ function buildToolRegistrations(requireRepoPath: boolean): ToolRegistration[] {
       description: CONFIG.tools.refresh.description,
       inputSchema: refreshInputSchema(requireRepoPath),
       annotations: toolAnnotations(),
+      _meta: chatGptToolMeta("Refreshing snapshot", "Snapshot refreshed"),
     },
   ];
 }
@@ -155,11 +240,13 @@ export function getToolRegistrationsForRuntime(): ToolRegistration[] {
 }
 
 export function getToolRegistration(name: string): ToolRegistration | undefined {
-  return getToolRegistrations().find((t) => t.name === name);
+  const canonicalName = canonicalToolName(name);
+  return getToolRegistrations().find((t) => t.name === canonicalName);
 }
 
 export function isRegisteredTool(name: string): boolean {
-  return getToolRegistrations().some((t) => t.name === name);
+  const canonicalName = canonicalToolName(name);
+  return getToolRegistrations().some((t) => t.name === canonicalName);
 }
 
 // ─── Runtime state (dev mode) ───────────────────────────────────────────────
@@ -274,8 +361,8 @@ function requiredRepoPath(value: unknown, auditId: string): string | ToolError {
     return toolError(
       "access_denied",
       runtimeStatesByPath.size > 1
-        ? "repo_path is required when multiple repositories are configured. Call repo.list and pass an exact repo_path."
-        : "repo_path must be a non-empty string from repo.list.",
+        ? "repo_path is required when multiple repositories are configured. Call repo_list and pass an exact repo_path."
+        : "repo_path must be a non-empty string from repo_list.",
       "unknown",
       "unknown",
       CONFIG.policyVersion,
@@ -391,6 +478,186 @@ function resolveRuntimeToolArgs(args: ToolCallArgs, state: RuntimeState, auditId
   };
 }
 
+function authRequestedPath(toolName: string, args: ResolvedToolCallArgs): string {
+  if (toolName === CONFIG.tools.fetch.name) return String(args.path ?? ".");
+  if (toolName === CONFIG.tools.tree.name) return String(args.path ?? ".");
+  if (toolName === CONFIG.tools.files.name) return String(args.prefix ?? ".");
+  return String(args.path ?? args.query ?? ".");
+}
+
+const API_TOOL_ROUTE_FIELDS = new Set([
+  "tool",
+  "tool_name",
+  "name",
+  "operation",
+  "action",
+  "method",
+  "endpoint",
+  "arguments",
+  "args",
+  "params",
+  "input",
+]);
+
+const API_TOOL_TARGET_ALIASES = new Map<string, string>([
+  ["list", CONFIG.tools.list.name],
+  ["repos", CONFIG.tools.list.name],
+  ["repositories", CONFIG.tools.list.name],
+  ["repo_list", CONFIG.tools.list.name],
+  ["repo.list", CONFIG.tools.list.name],
+  ["files", CONFIG.tools.files.name],
+  ["file_map", CONFIG.tools.files.name],
+  ["repo_files", CONFIG.tools.files.name],
+  ["repo.files", CONFIG.tools.files.name],
+  ["search", CONFIG.tools.search.name],
+  ["repo_search", CONFIG.tools.search.name],
+  ["repo.search", CONFIG.tools.search.name],
+  ["fetch", CONFIG.tools.fetch.name],
+  ["read", CONFIG.tools.fetch.name],
+  ["repo_fetch", CONFIG.tools.fetch.name],
+  ["repo.fetch", CONFIG.tools.fetch.name],
+  ["tree", CONFIG.tools.tree.name],
+  ["repo_tree", CONFIG.tools.tree.name],
+  ["repo.tree", CONFIG.tools.tree.name],
+  ["symbols", CONFIG.tools.symbols.name],
+  ["symbol", CONFIG.tools.symbols.name],
+  ["repo_symbols", CONFIG.tools.symbols.name],
+  ["repo.symbols", CONFIG.tools.symbols.name],
+  ["refresh", CONFIG.tools.refresh.name],
+  ["repo_refresh", CONFIG.tools.refresh.name],
+  ["repo.refresh", CONFIG.tools.refresh.name],
+]);
+
+function objectArg(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function normalizeApiToolTarget(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
+  const normalized = trimmed.replace(/^\/+/, "").replace(/^read_code\//, "").replace(/^read_code\./, "");
+  return API_TOOL_TARGET_ALIASES.get(normalized) ?? canonicalToolName(normalized);
+}
+
+function inferApiToolTarget(args: Record<string, unknown>): string {
+  if (typeof args.query === "string") return CONFIG.tools.search.name;
+  if (typeof args.path === "string" && (args.line_start !== undefined || args.line_end !== undefined)) return CONFIG.tools.fetch.name;
+  if (args.prefix !== undefined || args.suffixes !== undefined || args.languages !== undefined || args.states !== undefined || args.cursor !== undefined) return CONFIG.tools.files.name;
+  if (args.reason !== undefined) return CONFIG.tools.refresh.name;
+  if (args.path !== undefined || args.depth !== undefined) return CONFIG.tools.tree.name;
+  return CONFIG.tools.list.name;
+}
+
+function resolveApiToolCall(args: ToolCallArgs, auditId: string): { toolName: string; args: ToolCallArgs } | ToolError {
+  const nestedArgs =
+    objectArg(args.arguments) ??
+    objectArg(args.args) ??
+    objectArg(args.params) ??
+    objectArg(args.input) ??
+    {};
+  const routedArgs: ToolCallArgs = { ...nestedArgs };
+
+  for (const [key, value] of Object.entries(args)) {
+    if (!API_TOOL_ROUTE_FIELDS.has(key)) {
+      routedArgs[key] = value;
+    }
+  }
+
+  const toolName =
+    normalizeApiToolTarget(args.tool) ??
+    normalizeApiToolTarget(args.tool_name) ??
+    normalizeApiToolTarget(args.name) ??
+    normalizeApiToolTarget(args.operation) ??
+    normalizeApiToolTarget(args.action) ??
+    normalizeApiToolTarget(args.method) ??
+    normalizeApiToolTarget(args.endpoint) ??
+    inferApiToolTarget(routedArgs);
+
+  if (toolName === CONFIG.tools.apiTool.name || toolName === CONFIG.tools.readCode.name) {
+    return toolError(
+      "access_denied",
+      "Compatibility wrapper cannot route to itself. Use one of repo_list, repo_files, repo_search, repo_fetch, repo_tree, repo_symbols, or repo_refresh.",
+      "unknown",
+      String(args.snapshot_id ?? "unknown"),
+      CONFIG.policyVersion,
+      auditId,
+    );
+  }
+
+  if (!isRegisteredTool(toolName)) {
+    return toolError(
+      "access_denied",
+      `api_tool target is not supported: ${toolName}`,
+      "unknown",
+      String(args.snapshot_id ?? "unknown"),
+      CONFIG.policyVersion,
+      auditId,
+    );
+  }
+
+  return { toolName, args: routedArgs };
+}
+
+function buildUsageGuide(): Record<string, unknown> {
+  return {
+    guide_version: "first-call-2026-06-23",
+    purpose: "Use authorized local repository snapshots through read-only tools.",
+    recommended_next_calls: [
+      {
+        step: 1,
+        tool: CONFIG.tools.list.name,
+        when: "Start here when multiple repositories are configured or connector usage is unclear.",
+        arguments_hint: {},
+      },
+      {
+        step: 2,
+        tool: CONFIG.tools.files.name,
+        when: "Use after choosing a repository to discover exact relative paths and fetch/index/exclusion status.",
+        arguments_hint: { repo_path: "<exact repo_path from repo_list>", prefix: "src" },
+      },
+      {
+        step: 3,
+        tool: CONFIG.tools.symbols.name,
+        when: "Use for class, function, and definition questions.",
+        arguments_hint: { repo_path: "<exact repo_path from repo_list>", query: "<symbol name>" },
+      },
+      {
+        step: 4,
+        tool: CONFIG.tools.search.name,
+        when: "Use for indexed text, config, docs, and error strings after file discovery.",
+        arguments_hint: { repo_path: "<exact repo_path from repo_list>", query: "<text to search>" },
+      },
+      {
+        step: 5,
+        tool: CONFIG.tools.fetch.name,
+        when: "Use after a relative file path is known; fetch the smallest useful line range.",
+        arguments_hint: { repo_path: "<exact repo_path from repo_list>", path: "<relative/path.ts>", line_start: 1, line_end: 80, purpose: "<why this file is needed>" },
+      },
+      {
+        step: 6,
+        tool: CONFIG.tools.refresh.name,
+        when: "Use only when the user says files changed or earlier results may be stale.",
+        arguments_hint: { repo_path: "<exact repo_path from repo_list>", reason: "repository changed" },
+      },
+    ],
+    path_rules: [
+      "When multiple repositories are configured, copy repo_path exactly from repo_list.",
+      "repo_path selects the authorized repository; repo_fetch path must be relative inside that repository.",
+      "Absolute file paths, parent-directory traversal, symlink escapes, sensitive files, and full-repository export are rejected.",
+    ],
+    discovery_notes: [
+      "repo_files is the source of truth for file discovery in the active snapshot.",
+      "repo_search only covers indexed content; a search miss does not prove a file is absent.",
+      "If search misses a likely file, use repo_files with a precise prefix such as src, tests, tools, config, or docs, then call repo_fetch with the returned relative path.",
+      "Use repo_tree only for directory layout questions or targeted directory navigation.",
+    ],
+    compatibility_names: [CONFIG.tools.readCode.name, CONFIG.tools.apiTool.name],
+  };
+}
+
 function listRepositories(auditId: string): Record<string, unknown> {
   const repositories = getRuntimeStates().map((state) => ({
     name: state.repoName ?? state.repoPath,
@@ -405,10 +672,16 @@ function listRepositories(auditId: string): Record<string, unknown> {
   return {
     repositories,
     count: repositories.length,
+    usage_guide: buildUsageGuide(),
     content_origin: CONFIG.contentOrigin,
     instruction_trust: CONFIG.instructionTrust,
     policy_version: CONFIG.policyVersion,
     audit_id: auditId,
+    isError: false,
+    error_code: null,
+    message: null,
+    next_cursor: null,
+    retryable: false,
   };
 }
 
@@ -421,15 +694,25 @@ export async function handleToolCall(
   args: ToolCallArgs,
   auditId: string,
 ): Promise<ToolError | Record<string, unknown>> {
-  if (!isRegisteredTool(toolName)) {
+  const canonicalName = canonicalToolName(toolName);
+
+  if (!isRegisteredTool(canonicalName)) {
     const error = toolError("access_denied", `Unknown tool: ${toolName}`, "unknown", String(args.snapshot_id ?? "unknown"), CONFIG.policyVersion, auditId);
     return withPublicRepoPath(error, typeof args.repo_path === "string" ? args.repo_path : "unknown");
   }
 
-  if (toolName === "repo.list") {
+  if (canonicalName === CONFIG.tools.apiTool.name || canonicalName === CONFIG.tools.readCode.name) {
+    const routed = resolveApiToolCall(args, auditId);
+    if ("isError" in routed) {
+      return withPublicRepoPath(routed, typeof args.repo_path === "string" ? args.repo_path : "unknown");
+    }
+    return handleToolCall(routed.toolName, routed.args, auditId);
+  }
+
+  if (canonicalName === CONFIG.tools.list.name) {
     const result = listRepositories(auditId);
     import("../audit/evidence.js").then(({ evidenceFromToolCall }) => {
-      evidenceFromToolCall(toolName, "repo-list", "current", auditId, args, result, false);
+      evidenceFromToolCall(canonicalName, "repo-list", "current", auditId, args, result, false);
     }).catch(() => { /* evidence failure must not block tool response */ });
     return result;
   }
@@ -459,10 +742,10 @@ export async function handleToolCall(
     const authResult = authorizeToolCall(
       String(resolvedArgs.token),
       String(resolvedArgs.grant_id),
-      toolName,
+      canonicalName,
       resolvedArgs.repo_id,
       resolvedArgs.snapshot_id,
-      String(resolvedArgs.path ?? resolvedArgs.query ?? "."),
+      authRequestedPath(canonicalName, resolvedArgs),
     );
     if (!authResult.allowed) {
       return withPublicRepoPath(authDeniedResponse(authResult), resolvedArgs.repo_path);
@@ -486,8 +769,8 @@ export async function handleToolCall(
 
   let result: ToolError | Record<string, unknown>;
 
-  switch (toolName) {
-    case "repo.search":
+  switch (canonicalName) {
+    case "repo_search":
       result = await repoSearcher({
         repo_id: resolvedArgs.repo_id,
         repo_path: resolvedArgs.repo_path,
@@ -497,7 +780,20 @@ export async function handleToolCall(
         limit: Number(resolvedArgs.limit ?? CONFIG.tools.search.defaultLimit),
       }, manifest, rootDir, state.budgetState);
       break;
-    case "repo.fetch":
+    case "repo_files":
+      result = await repoFiles({
+        repo_id: resolvedArgs.repo_id,
+        repo_path: resolvedArgs.repo_path,
+        snapshot_id: resolvedArgs.snapshot_id,
+        prefix: resolvedArgs.prefix ? String(resolvedArgs.prefix) : undefined,
+        suffixes: Array.isArray(resolvedArgs.suffixes) ? resolvedArgs.suffixes.map(String) : undefined,
+        languages: Array.isArray(resolvedArgs.languages) ? resolvedArgs.languages.map(String) : undefined,
+        states: Array.isArray(resolvedArgs.states) ? resolvedArgs.states.map(String) : undefined,
+        cursor: resolvedArgs.cursor ? String(resolvedArgs.cursor) : undefined,
+        limit: Number(resolvedArgs.limit ?? CONFIG.tools.files.defaultLimit),
+      }, manifest, state.budgetState);
+      break;
+    case "repo_fetch":
       result = await repoFetcher({
         repo_id: resolvedArgs.repo_id,
         repo_path: resolvedArgs.repo_path,
@@ -508,7 +804,7 @@ export async function handleToolCall(
         purpose: String(resolvedArgs.purpose ?? "unknown"),
       }, manifest, rootDir, state.budgetState);
       break;
-    case "repo.tree":
+    case "repo_tree":
       result = await repoTreer({
         repo_id: resolvedArgs.repo_id,
         repo_path: resolvedArgs.repo_path,
@@ -518,7 +814,7 @@ export async function handleToolCall(
         limit: Number(resolvedArgs.limit ?? CONFIG.tools.tree.defaultLimit),
       }, manifest, state.budgetState);
       break;
-    case "repo.symbols":
+    case "repo_symbols":
       result = await repoSymbols({
         repo_id: resolvedArgs.repo_id,
         repo_path: resolvedArgs.repo_path,
@@ -528,7 +824,7 @@ export async function handleToolCall(
         limit: Number(resolvedArgs.limit ?? CONFIG.tools.symbols.defaultLimit),
       }, manifest, state.budgetState);
       break;
-    case "repo.refresh":
+    case "repo_refresh":
       result = await refreshRepositorySnapshot({
         repo_id: resolvedArgs.repo_id,
         repo_path: resolvedArgs.repo_path,
@@ -546,7 +842,7 @@ export async function handleToolCall(
 
   // BROKEN CHAIN-003 FIX: Record evidence for every tool call
   import("../audit/evidence.js").then(({ evidenceFromToolCall }) => {
-    evidenceFromToolCall(toolName, resolvedArgs.repo_id, resolvedArgs.snapshot_id, auditId, resolvedArgs, result, "error_code" in result);
+    evidenceFromToolCall(canonicalName, resolvedArgs.repo_id, resolvedArgs.snapshot_id, auditId, resolvedArgs, result, "error_code" in result);
   }).catch(() => { /* evidence failure must not block tool response */ });
 
   return withPublicRepoPath(result, resolvedArgs.repo_path);

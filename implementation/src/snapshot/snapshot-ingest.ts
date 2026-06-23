@@ -53,6 +53,52 @@ const BLOCKED_DIRECTORY_PREFIX_REASONS: ReadonlyArray<[string, string]> = [
   ["tmp_", "temporary directory block: tmp_*"],
 ];
 
+const ROOT_FILE_PRIORITY = new Set([
+  "package.json",
+  "pyproject.toml",
+  "tsconfig.json",
+  "jsconfig.json",
+  "go.mod",
+  "cargo.toml",
+  "pom.xml",
+  "build.gradle",
+  "settings.gradle",
+  "requirements.txt",
+  "uv.lock",
+  "poetry.lock",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "package-lock.json",
+  "readme.md",
+  "readme",
+  "license",
+  "makefile",
+  "dockerfile",
+]);
+
+const PRIORITY_DIRECTORY_ORDER = new Map<string, number>([
+  ["src", 0],
+  ["source", 1],
+  ["lib", 2],
+  ["app", 3],
+  ["packages", 4],
+  ["tests", 5],
+  ["test", 6],
+  ["spec", 7],
+  ["tools", 8],
+  ["scripts", 9],
+  ["config", 10],
+  [".github", 11],
+  ["docs", 12],
+]);
+
+const DEFERRED_DIRECTORY_ORDER = new Map<string, number>([
+  ["reports", 90],
+  ["archive", 91],
+  [".multica-import", 92],
+  [".omx", 93],
+]);
+
 const ALLOWED_EXTENSIONS = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs", ".java", ".kt",
   ".c", ".cpp", ".h", ".hpp", ".cs", ".rb", ".php", ".swift", ".scala",
@@ -108,6 +154,44 @@ function blockedDirectoryReason(name: string): string | undefined {
 
 function isKnownTextFilename(name: string): boolean {
   return KNOWN_TEXT_FILENAMES.has(name.toLowerCase());
+}
+
+function directoryPriority(name: string): number {
+  const lower = name.toLowerCase();
+  const priority = PRIORITY_DIRECTORY_ORDER.get(lower);
+  if (priority !== undefined) return priority;
+
+  const deferred = DEFERRED_DIRECTORY_ORDER.get(lower);
+  if (deferred !== undefined) return deferred;
+
+  if (lower.startsWith(".tmp") || lower.startsWith("tmp_")) return 94;
+  if (lower.includes("cache")) return 95;
+  return 40;
+}
+
+function filePriority(name: string): number {
+  const lower = name.toLowerCase();
+  if (ROOT_FILE_PRIORITY.has(lower) || isKnownTextFilename(name)) return 0;
+  return 30;
+}
+
+function entryPriority(entry: { name: string; isDirectory(): boolean; isFile(): boolean }): number {
+  if (entry.isDirectory()) return directoryPriority(entry.name);
+  if (entry.isFile()) return filePriority(entry.name);
+  return 80;
+}
+
+function sortDirectoryEntries<T extends { name: string; isDirectory(): boolean; isFile(): boolean }>(entries: T[]): T[] {
+  return [...entries].sort((a, b) => {
+    const priorityOrder = entryPriority(a) - entryPriority(b);
+    if (priorityOrder !== 0) return priorityOrder;
+
+    if (a.isDirectory() !== b.isDirectory()) {
+      return a.isDirectory() ? -1 : 1;
+    }
+
+    return a.name.localeCompare(b.name, "en", { sensitivity: "base", numeric: true });
+  });
 }
 
 function looksLikeText(content: Buffer): boolean {
@@ -191,7 +275,7 @@ export function ingestDirectory(rootDir: string, repo_id: string, snapshotIdPara
       return;
     }
 
-    for (const ent of entries) {
+    for (const ent of sortDirectoryEntries(entries)) {
       const abs = join(dir, ent.name);
       const rel = repoRelativePath(abs);
 
@@ -271,6 +355,7 @@ export function ingestDirectory(rootDir: string, repo_id: string, snapshotIdPara
           language: hasAllowedExtension ? languageFromExt(ext) : "text",
           extension: ext,
           sensitive_detected: false,
+          fetchable: true,
           index_admitted: true,
         });
       }

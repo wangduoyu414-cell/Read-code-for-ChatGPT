@@ -11,7 +11,7 @@ function makeManifest(snapId: string, repoId: string): SnapshotManifest {
     repo_id: repoId,
     created_at: new Date().toISOString(),
     source_root_hash: computeFileHash("/fake/root"),
-    files: [{ relative_path: "src/a.ts", file_hash: computeFileHash("x"), byte_count: 10, line_count: 1, language: "typescript", extension: ".ts", sensitive_detected: false, index_admitted: true }],
+    files: [{ relative_path: "src/a.ts", file_hash: computeFileHash("x"), byte_count: 10, line_count: 1, language: "typescript", extension: ".ts", sensitive_detected: false, fetchable: true, index_admitted: true }],
     excluded_files: [],
     index_version: 1,
     policy_version: CONFIG.policyVersion,

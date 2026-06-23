@@ -1,6 +1,6 @@
 {
   "schema_version": "2026-06-21-execution-cards-v3",
-  "status": "implementation_ready_with_exec015_complete",
+  "status": "implementation_ready_with_exec017_in_progress",
   "execution_root": "implementation",
   "cards": [
     {"id":"EXEC-000","file":"EXEC-000-design-baseline-coverage-gate.md","depends_on":[]},
@@ -18,6 +18,8 @@
     {"id":"EXEC-012","file":"EXEC-012-chatgpt-default-context-connect-readiness.md","depends_on":["EXEC-011"]},
     {"id":"EXEC-013","file":"EXEC-013-doc-taxonomy-and-preconnect-chain.md","depends_on":["EXEC-012"]},
     {"id":"EXEC-014","file":"EXEC-014-chatgpt-call-latency-optimization.md","depends_on":["EXEC-013"]},
-    {"id":"EXEC-015","file":"EXEC-015-doc-truth-and-overview-entry-gate.md","depends_on":["EXEC-014"]}
+    {"id":"EXEC-015","file":"EXEC-015-doc-truth-and-overview-entry-gate.md","depends_on":["EXEC-014"]},
+    {"id":"EXEC-016","file":"EXEC-016-snapshot-file-map-coverage.md","depends_on":["EXEC-015"]},
+    {"id":"EXEC-017","file":"EXEC-017-first-call-onboarding-guide.md","depends_on":["EXEC-016"]}
   ]
 }

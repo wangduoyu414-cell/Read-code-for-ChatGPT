@@ -1,7 +1,7 @@
 {
   "name": "chatgpt-local-repo-001",
   "version": "0.1.0",
-  "description": "MCP server for safe read-only local repository code context in ChatGPT",
+  "description": "Read-only MCP bridge that lets ChatGPT inspect authorized local repositories through file maps, search, symbols, fetch, and refresh.",
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
     "test:watch": "node --import tsx --watch --test tests/*.test.ts",
+    "check:link": "node scripts/check-read-code-link.mjs",
     "start": "node dist/startup.js",
     "start:server": "node dist/server.js",
     "dev": "tsx src/startup.ts"

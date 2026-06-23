@@ -14,6 +14,8 @@ export interface ManifestFile {
   extension: string;
   sensitive_detected: boolean;
   sensitive_reason?: string;
+  fetchable: boolean;
+  fetch_reject_reason?: string;
   index_admitted: boolean;
   index_reject_reason?: string;
 }

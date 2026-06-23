@@ -14,7 +14,7 @@ import { sanitizeContent, wrapRepositoryContent } from "../security/redaction.js
 import { scanForSecrets } from "../security/secret-scanner.js";
 import { searchText } from "../indexer/text-index.js";
 import { searchSymbols } from "../indexer/symbol-index.js";
-import type { SnapshotManifest } from "../snapshot/manifest.js";
+import type { ManifestFile, SnapshotManifest } from "../snapshot/manifest.js";
 import { rejectIfNotReady } from "../snapshot/snapshot-registry.js";
 
 function makeCtx(repo_id: string, snapshot_id: string) {
@@ -36,7 +36,126 @@ function normalizeTreePrefix(
   return pathCheck.normalized === "." ? "" : pathCheck.normalized ?? "";
 }
 
-// ─── repo.search ─────────────────────────────────────────────────────────────
+function normalizeOptionalPrefix(
+  path: string | undefined,
+  repo_id: string,
+  snapshot_id: string,
+  audit_id: string,
+): string | ToolError | undefined {
+  if (path === undefined || path === "" || path === "." || path === "./") {
+    return undefined;
+  }
+
+  const pathCheck = validateFilePath(path, repo_id, snapshot_id, audit_id);
+  if (!pathCheck.allowed) return pathCheck.error!;
+  return pathCheck.normalized === "." ? undefined : pathCheck.normalized;
+}
+
+function encodeFilesCursor(payload: Record<string, unknown>): string {
+  return Buffer.from(JSON.stringify(payload), "utf-8").toString("base64url");
+}
+
+function decodeFilesCursor(cursor: string): Record<string, unknown> | null {
+  try {
+    const decoded = Buffer.from(cursor, "base64url").toString("utf-8");
+    const parsed = JSON.parse(decoded);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function stableStringArray(values: string[] | undefined): string[] {
+  return Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean))).sort();
+}
+
+function filesFilterKey(args: {
+  repo_path: string;
+  snapshot_id: string;
+  prefix?: string;
+  suffixes?: string[];
+  languages?: string[];
+  states?: string[];
+  limit: number;
+}): Record<string, unknown> {
+  return {
+    repo_path: args.repo_path,
+    snapshot_id: args.snapshot_id,
+    prefix: args.prefix ?? "",
+    suffixes: stableStringArray(args.suffixes),
+    languages: stableStringArray(args.languages),
+    states: stableStringArray(args.states),
+    limit: args.limit,
+    order: "path:asc:v1",
+  };
+}
+
+function fileState(file: ManifestFile): "indexed" | "fetchable_unindexed" | "excluded" {
+  if (file.index_admitted) return "indexed";
+  if (file.fetchable) return "fetchable_unindexed";
+  return "excluded";
+}
+
+function reasonKey(reason: string): string {
+  const value = reason.toLowerCase();
+  if (value.includes("traversal limit")) return "excluded_by_file_limit";
+  if (value.includes("too large")) return "excluded_by_size";
+  if (value.includes("binary") || value.includes("non-text")) return "unsupported_binary";
+  if (value.includes("sensitive")) return "secret_blocked";
+  if (value.includes("unreadable")) return "permission_denied";
+  if (value.includes("directory block")) return "excluded_by_scope";
+  if (value.includes("path rejected")) return "excluded_by_scope";
+  return "excluded_by_scope";
+}
+
+interface FileMapItem {
+  path: string;
+  type: "file";
+  language: string | null;
+  size_bytes: number | null;
+  line_count: number | null;
+  fetchable: boolean;
+  indexed: boolean;
+  state: "indexed" | "fetchable_unindexed" | "excluded";
+  exclusion_reason: string | null;
+}
+
+function normalizeStateFilters(states: string[] | undefined): Array<"indexed" | "fetchable_unindexed" | "excluded"> {
+  const allowed = new Set(["indexed", "fetchable_unindexed", "excluded"]);
+  return stableStringArray(states)
+    .filter((state): state is "indexed" | "fetchable_unindexed" | "excluded" => allowed.has(state));
+}
+
+function manifestFileMapItem(file: ManifestFile): FileMapItem {
+  const state = fileState(file);
+  return {
+    path: file.relative_path,
+    type: "file",
+    language: file.language,
+    size_bytes: file.byte_count,
+    line_count: file.line_count,
+    fetchable: file.fetchable,
+    indexed: file.index_admitted,
+    state,
+    exclusion_reason: state === "indexed" ? null : (file.fetch_reject_reason ?? file.index_reject_reason ?? "not_fetchable"),
+  };
+}
+
+function excludedFileMapItem(file: { relative_path: string; reason: string }): FileMapItem {
+  return {
+    path: file.relative_path,
+    type: "file",
+    language: null,
+    size_bytes: null,
+    line_count: null,
+    fetchable: false,
+    indexed: false,
+    state: "excluded",
+    exclusion_reason: reasonKey(file.reason),
+  };
+}
+
+// ─── repo_search ─────────────────────────────────────────────────────────────
 
 export async function repoSearcher(
   args: { repo_id: string; repo_path: string; snapshot_id: string; query: string; mode?: string; limit?: number },
@@ -84,7 +203,106 @@ export async function repoSearcher(
   return response;
 }
 
-// ─── repo.fetch ──────────────────────────────────────────────────────────────
+// ─── repo_files ──────────────────────────────────────────────────────────────
+
+export async function repoFiles(
+  args: {
+    repo_id: string;
+    repo_path: string;
+    snapshot_id: string;
+    prefix?: string;
+    suffixes?: string[];
+    languages?: string[];
+    states?: string[];
+    cursor?: string;
+    limit?: number;
+  },
+  manifest: SnapshotManifest,
+  budget: BudgetState,
+) {
+  const ctx = makeCtx(args.repo_id, args.snapshot_id);
+
+  const notReady = rejectIfNotReady(ctx.snapshot_id);
+  if (notReady) return toolError(notReady, `Snapshot ${ctx.snapshot_id} is ${notReady}.`, ctx.repo_id, ctx.snapshot_id, CONFIG.policyVersion, ctx.audit_id);
+
+  const throttle = checkThrottle(budget, ctx.repo_id, ctx.snapshot_id, ctx.audit_id);
+  if (!throttle.allowed) return throttle.error!;
+  const cc = checkCallCount(budget, ctx.repo_id, ctx.snapshot_id, ctx.audit_id);
+  if (!cc.allowed) return cc.error!;
+
+  const prefix = normalizeOptionalPrefix(args.prefix, ctx.repo_id, ctx.snapshot_id, ctx.audit_id);
+  if (typeof prefix !== "string" && prefix !== undefined) return prefix;
+
+  const limit = Math.min(args.limit ?? CONFIG.tools.files.defaultLimit, CONFIG.tools.files.maxLimit);
+  const suffixes = stableStringArray(args.suffixes).map((suffix) => suffix.toLowerCase());
+  const languages = stableStringArray(args.languages).map((language) => language.toLowerCase());
+  const states = normalizeStateFilters(args.states);
+  const filterKey = filesFilterKey({ ...args, prefix, limit });
+
+  let offset = 0;
+  if (args.cursor) {
+    const decoded = decodeFilesCursor(args.cursor);
+    if (!decoded || JSON.stringify(decoded.filter) !== JSON.stringify(filterKey) || !Number.isInteger(decoded.offset) || Number(decoded.offset) < 0) {
+      return toolError("access_denied", "Invalid or stale repo_files cursor.", ctx.repo_id, ctx.snapshot_id, CONFIG.policyVersion, ctx.audit_id);
+    }
+    offset = Number(decoded.offset);
+  }
+
+  const exclusionReasonSummary = new Map<string, number>();
+  for (const excluded of manifest.excluded_files) {
+    exclusionReasonSummary.set(reasonKey(excluded.reason), (exclusionReasonSummary.get(reasonKey(excluded.reason)) ?? 0) + 1);
+  }
+
+  const indexedItems = manifest.files.map(manifestFileMapItem);
+  const excludedItems = states.includes("excluded")
+    ? manifest.excluded_files.map(excludedFileMapItem)
+    : [];
+  const matching = [...indexedItems, ...excludedItems]
+    .filter((item) => {
+      if (prefix && item.path !== prefix && !item.path.startsWith(prefix + "/")) return false;
+      if (suffixes.length > 0 && !suffixes.some((suffix) => item.path.toLowerCase().endsWith(suffix))) return false;
+      if (languages.length > 0 && (item.language === null || !languages.includes(item.language.toLowerCase()))) return false;
+      if (states.length > 0 && !states.includes(item.state)) return false;
+      return true;
+    })
+    .sort((a, b) => a.path.localeCompare(b.path));
+
+  const page = matching.slice(offset, offset + limit);
+  const hasMore = offset + limit < matching.length;
+  const nextCursor = hasMore ? encodeFilesCursor({ filter: filterKey, offset: offset + limit }) : null;
+
+  const counts = {
+    discovered_total: manifest.files.length + manifest.excluded_files.length,
+    matching_total: matching.length,
+    fetchable_total: manifest.files.filter((file) => file.fetchable).length,
+    indexed_total: manifest.files.filter((file) => file.index_admitted).length,
+    excluded_total: manifest.excluded_files.length + manifest.files.filter((file) => !file.fetchable).length,
+    returned: page.length,
+    exclusion_reasons: Object.fromEntries(Array.from(exclusionReasonSummary.entries()).sort((a, b) => a[0].localeCompare(b[0]))),
+  };
+
+  const response = wrapRepositoryContent({
+    repo_path: args.repo_path,
+    snapshot_id: ctx.snapshot_id,
+    manifest_hash: manifest.manifest_hash,
+    counts,
+    items: page,
+    has_more: hasMore,
+    next_cursor: nextCursor,
+  }, ctx.audit_id);
+
+  const respBytes = Buffer.byteLength(JSON.stringify(response), "utf-8");
+  const rb = checkResponseBytes(respBytes, ctx.repo_id, ctx.snapshot_id, ctx.audit_id);
+  if (!rb.allowed) return rb.error!;
+  const sb = checkSessionBudget(respBytes, budget, ctx.repo_id, ctx.snapshot_id, ctx.audit_id);
+  if (!sb.allowed) return sb.error!;
+  const gb = checkGrantBudget(respBytes, budget, ctx.repo_id, ctx.snapshot_id, ctx.audit_id);
+  if (!gb.allowed) return gb.error!;
+
+  return response;
+}
+
+// ─── repo_fetch ──────────────────────────────────────────────────────────────
 
 export async function repoFetcher(
   args: { repo_id: string; repo_path: string; snapshot_id: string; path: string; line_start: number; line_end: number; purpose: string },
@@ -111,6 +329,7 @@ export async function repoFetcher(
 
   const mf = manifest.files.find((f) => f.relative_path === pathCheck.normalized);
   if (!mf) return toolError("access_denied", "File not in manifest.", ctx.repo_id, ctx.snapshot_id, CONFIG.policyVersion, ctx.audit_id);
+  if (!mf.fetchable) return toolError("access_denied", mf.fetch_reject_reason ?? "File is not fetchable.", ctx.repo_id, ctx.snapshot_id, CONFIG.policyVersion, ctx.audit_id);
   if (mf.sensitive_detected) return toolError("secret_detected", "File flagged as sensitive.", ctx.repo_id, ctx.snapshot_id, CONFIG.policyVersion, ctx.audit_id);
 
   let raw: string;
@@ -146,7 +365,7 @@ export async function repoFetcher(
   }, ctx.audit_id);
 }
 
-// ─── repo.tree ───────────────────────────────────────────────────────────────
+// ─── repo_tree ───────────────────────────────────────────────────────────────
 
 export async function repoTreer(
   args: { repo_id: string; repo_path: string; snapshot_id: string; path?: string; depth?: number; limit?: number },
@@ -217,7 +436,7 @@ export async function repoTreer(
   }, ctx.audit_id);
 }
 
-// ─── repo.symbols ────────────────────────────────────────────────────────────
+// ─── repo_symbols ────────────────────────────────────────────────────────────
 
 export async function repoSymbols(
   args: { repo_id: string; repo_path: string; snapshot_id: string; query: string; language?: string; limit?: number },

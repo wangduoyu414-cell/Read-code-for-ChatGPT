@@ -139,6 +139,31 @@ await describe("snapshot ingest", async () => {
     }
   });
 
+  await it("prioritizes source and test directories before large report output when maxEntries is low", () => {
+    const root = makeTempRepo();
+    try {
+      mkdirSync(join(root, "reports"), { recursive: true });
+      mkdirSync(join(root, "src"), { recursive: true });
+      mkdirSync(join(root, "tests"), { recursive: true });
+
+      for (let index = 0; index < 20; index += 1) {
+        writeFileSync(join(root, "reports", `report-${String(index).padStart(2, "0")}.md`), `report ${index}\n`);
+      }
+      writeFileSync(join(root, "src", "app.py"), "def main():\n    return 'ok'\n");
+      writeFileSync(join(root, "tests", "app.test.py"), "def test_main():\n    assert True\n");
+
+      const { manifest, warnings } = ingestDirectory(root, "repo-test", "snap-test", { maxEntries: 8 });
+      const paths = manifest.files.map((f) => f.relative_path);
+
+      assert.ok(paths.includes("src/app.py"));
+      assert.ok(paths.includes("tests/app.test.py"));
+      assert.ok(manifest.excluded_files.some((f) => f.reason.startsWith("snapshot traversal limit reached:")));
+      assert.ok(warnings.some((w) => w.includes("EXCLUDED(limit):")));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   await it(
     "records unreadable directories without aborting the snapshot",
     { skip: process.platform === "win32" ? "POSIX permissions are not portable on Windows." : false },

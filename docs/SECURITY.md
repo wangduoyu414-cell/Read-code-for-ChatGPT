@@ -13,13 +13,14 @@ This project is designed as a read-only MCP（Model Context Protocol，模型上
 
 The runtime exposes bounded, non-destructive tools:
 
-- `repo.tree`
-- `repo.search`
-- `repo.fetch`
-- `repo.symbols`
-- `repo.refresh`
+- `repo_tree`
+- `repo_search`
+- `repo_files`
+- `repo_fetch`
+- `repo_symbols`
+- `repo_refresh`
 
-Server-side guards reject absolute paths, parent traversal, sensitive file names, unsupported files, oversized responses, and suspicious secret content. Repository content is always marked as untrusted data. `repo.refresh` updates only the server's in-memory snapshot/index and keeps the previous snapshot active if refresh fails.
+Server-side guards reject absolute paths, parent traversal, sensitive file names, unsupported files, oversized responses, and suspicious secret content. Repository content is always marked as untrusted data. `repo_files` returns only a paginated file map with fetch/index/exclusion status, not file contents. `repo_refresh` updates only the server's in-memory snapshot/index and keeps the previous snapshot active if refresh fails.
 
 ## Real Repository Usage（真实仓库使用）
 

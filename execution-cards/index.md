@@ -1,13 +1,13 @@
 # CHATGPT-LOCAL-REPO-001 Execution Cards（执行任务卡索引）
 
-状态：implementation_ready_with_exec015_complete（实现已完成基础链路，并完成文档真实状态校正与读仓入口收敛）。
+状态：implementation_ready_with_exec017_in_progress（基础链路已完成，正在补齐 ChatGPT 首次调用自解释导览）。
 
 本目录把 `docs/design/task-card.md` 的设计拆成可执行任务卡。执行前必须先确认执行根目录：
 
 - 默认执行根目录：`<repo-root>/implementation`
 - 技术栈默认：`Node.js`（节点运行时） + `TypeScript`（类型脚本） + 官方 `@modelcontextprotocol/sdk`（模型上下文协议官方开发包）。
 - 第一版决策：无 `UI widget`（界面小组件），仅数据工具。
-- 当前实现范围：单用户、多仓库白名单、只读快照；`EXEC-014` 进一步收紧 ChatGPT（聊天模型）的低成本读取路径，`EXEC-015` 已校正过时文档与读仓入口说明，并继续禁止候选仓库发现或重型 IDE（集成开发环境）能力进入当前链路。
+- 当前实现范围：单用户、多仓库白名单、只读快照；`EXEC-014` 进一步收紧 ChatGPT（聊天模型）的低成本读取路径，`EXEC-015` 已校正过时文档与读仓入口说明，`EXEC-016` 已补齐大仓库源码优先快照和文件地图能力，`EXEC-017` 正在补齐首次调用自解释导览，并继续禁止候选仓库发现或重型 IDE（集成开发环境）能力进入当前链路。
 
 ## 执行顺序
 
@@ -29,6 +29,8 @@
 | 13 | `EXEC-013-doc-taxonomy-and-preconnect-chain.md` | 归类仓库文档、补根目录接入说明并重新验证 ChatGPT 接入前链路 | EXEC-012 |
 | 14 | `EXEC-014-chatgpt-call-latency-optimization.md` | 优化 ChatGPT 调用轮次、`repo.tree` 输出体积和 MCP 返回重复大包 | EXEC-013 |
 | 15 | `EXEC-015-doc-truth-and-overview-entry-gate.md` | 校正文档真实状态、收敛读仓入口说明并暂缓过重能力 | EXEC-014 |
+| 16 | `EXEC-016-snapshot-file-map-coverage.md` | 修复大仓库源码优先快照覆盖并新增可分页文件地图 | EXEC-015 |
+| 17 | `EXEC-017-first-call-onboarding-guide.md` | 让 ChatGPT 首次调用即可获得结构化读仓导览 | EXEC-016 |
 
 ## 全局硬边界
 
@@ -72,4 +74,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\execution-cards\validate-
 - `EXEC-013` 关闭前必须证明当时 14 张卡结构校验通过、文档归类后活动引用未断裂，并重新记录本地 MCP（模型上下文协议）接入前链路证据。
 - `EXEC-014` 关闭前必须证明当前 15 张卡结构校验通过，并用 MCP SDK（模型上下文协议开发包）证明单仓库省略 `repo_path`、多仓库拒绝省略 `repo_path`、`repo.tree` 目录摘要、`content` 短摘要与 `structuredContent` 完整结果分离均生效。
 - `EXEC-015` 关闭前必须证明当前 16 张卡结构校验通过，活动文档不再误导当前工具仍为 `not_implemented`（未实现），读仓入口说明不再互相冲突，并通过 Claude（外部评审模型）收口复核。
+- `EXEC-016` 关闭前必须证明当前 17 张卡结构校验通过，`repo_files`（文件列表）工具契约、源码优先快照扫描、`repo_fetch`（读取）读取 fetchable-unindexed（可读取但未索引）文件和本地链路自检均通过，并通过 Claude（外部评审模型）收口复核。
+- `EXEC-017` 关闭前必须证明当前 18 张卡结构校验通过，`read_code {}` 和 `repo_list` 均返回同源结构化导览，显式 wrapper（包装器）路由不回归，本地链路自检覆盖首次调用路径，并通过 Claude（外部评审模型）收口复核。
 - 父级 `docs/reports/validation-report.md` 必须同步记录执行卡拆分状态，区分 `ready_for_ai_execution_gated`（任务可执行门禁就绪）与 runtime complete（运行时完成）。

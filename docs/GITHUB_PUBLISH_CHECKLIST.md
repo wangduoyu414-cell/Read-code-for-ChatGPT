@@ -25,7 +25,7 @@ From `<repo-root>`:
 
 ```powershell
 rg -n -e "sk" -e "OPENAI" -e "client" -e "secret" -e "tunnel"
-rg -n "([A-Z]:\\|\\\\192\.168\.|C:\\Users\\|D:\\)"
+rg -n "<windows-drive-pattern>|<private-unc-pattern>|<user-home-pattern>"
 ```
 
 Expected result: no real secrets and no machine-specific publish instructions. Code tests may contain generic absolute-path rejection samples.
@@ -54,4 +54,12 @@ Recommended remote:
 git remote add origin https://github.com/wangduoyu414-cell/Read-code-for-ChatGPT.git
 git branch -M main
 git push -u origin main
+```
+
+## 5. GitHub Repo Profile（仓库资料）
+
+Use [GITHUB_REPO_PROFILE.md](GITHUB_REPO_PROFILE.md) for the GitHub About（简介）description, topics（主题标签）, homepage, and connector description. Keep GitHub settings and README wording aligned so new users understand the project as:
+
+```text
+ChatGPT reads explicitly authorized local repositories through a read-only MCP bridge.
 ```
