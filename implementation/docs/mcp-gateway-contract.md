@@ -60,13 +60,13 @@ Public MCP tool responses replace the internal `repo_id` with the selected `repo
 
 ## Server Instructions
 
-The server initialization instructions declare repository content as untrusted data, all tools as read-only, and full-repo export as blocked by budget enforcement.
+The server initialization instructions declare repository content as untrusted data and all tools as read-only. There is no full-repository export tool; callers must use file discovery, search, symbols, tree, and targeted fetch operations.
 
 Read-order guidance:
 
 - For a targeted question, prefer `repo.symbols` for definitions or `repo.search` for text/config/docs/errors, then call `repo.fetch` for the smallest useful line range.
 - For first orientation in an unfamiliar configured repository, call `repo.list` to get the lightweight repository map. Use `repo.tree(path=".", depth=1)` only when directory layout is needed.
-- `repo.tree` is not a full repository scan or export tool. It is capped by depth, limit, and budget.
+- `repo.tree` is not a full repository scan or export tool. It is capped by depth and result limit.
 - Use `repo.refresh` only when the user says files changed or earlier results may be stale.
 
 ## Dependency Lock

@@ -9,8 +9,8 @@
 |---|---|---|
 | Audit ID | `src/audit/audit-id.ts` | 唯一排序 audit_id 生成、最小审计事件类型、内存审计日志 |
 | Path Guard | `src/security/path-guard.ts` | 路径规范化、绝对路径拒绝、父目录遍历拒绝、敏感路径检测（.git/.env/SSH/云凭据） |
-| Budget | `src/security/budget.ts` | 单响应/单会话/单授权字节预算、调用计数、限流窗口、树深/搜索命中/符号命中限制、行窗口限制 |
-| Redaction | `src/security/redaction.ts` | 敏感模式脱敏（AWS 密钥/JWT/GitHub token/私钥头）、截断、结构化包装（content_origin/instruction_trust） |
+| Budget | `src/security/budget.ts` | 单响应上限、行窗口上限和共享限流在配置为 `null` 时关闭；单授权字节预算、会话字节计数、调用计数、树深/搜索命中/符号命中限制仍由同一模块执行 |
+| Redaction | `src/security/redaction.ts` | 敏感模式脱敏（AWS 密钥/JWT/GitHub token/私钥头）、可配置截断、结构化包装（content_origin/instruction_trust） |
 | Secret Scanner | `src/security/secret-scanner.ts` | 高置信度敏感检测（私钥 PEM/连接字符串/Bearer token/敏感文件类型）、默认拒绝不确定样本 |
 | Policy Types | `src/policy/policy-types.ts` | Grant、GrantBudget、PolicyVersion、AuthResult、DevTokenClaims、PolicyDecision 类型定义 |
 
@@ -33,6 +33,6 @@
 ## Security Posture
 
 - Path guard: rejects absolute paths, `..`, mixed separators, sensitive file types
-- Budget: cumulative enforcement across session and grant; not just per-request
+- Budget: grant cumulative enforcement remains active. Single-response size, single-fetch line window, and shared throttle ceilings are disabled when their config values are `null`; session bytes and tool-call count are tracked and only enforced when their ceilings are non-null.
 - Redaction: pattern-based + entropy detection; wraps all output with untrusted markers
 - Secret scanner: default-deny for uncertain samples (AC-004)

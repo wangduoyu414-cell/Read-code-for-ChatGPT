@@ -14,6 +14,7 @@ import { sanitizeContent, wrapRepositoryContent } from "../security/redaction.js
 import { scanForSecrets } from "../security/secret-scanner.js";
 import { searchText } from "../indexer/text-index.js";
 import { searchSymbols } from "../indexer/symbol-index.js";
+import { indexSkipReason, isPathIndexed } from "../indexer/index-status.js";
 import type { ManifestFile, SnapshotManifest } from "../snapshot/manifest.js";
 import { rejectIfNotReady } from "../snapshot/snapshot-registry.js";
 
@@ -90,8 +91,8 @@ function filesFilterKey(args: {
   };
 }
 
-function fileState(file: ManifestFile): "indexed" | "fetchable_unindexed" | "excluded" {
-  if (file.index_admitted) return "indexed";
+function fileState(file: ManifestFile, snapshotId: string): "indexed" | "fetchable_unindexed" | "excluded" {
+  if (file.index_admitted && isPathIndexed(snapshotId, file.relative_path)) return "indexed";
   if (file.fetchable) return "fetchable_unindexed";
   return "excluded";
 }
@@ -126,8 +127,8 @@ function normalizeStateFilters(states: string[] | undefined): Array<"indexed" | 
     .filter((state): state is "indexed" | "fetchable_unindexed" | "excluded" => allowed.has(state));
 }
 
-function manifestFileMapItem(file: ManifestFile): FileMapItem {
-  const state = fileState(file);
+function manifestFileMapItem(file: ManifestFile, snapshotId: string): FileMapItem {
+  const state = fileState(file, snapshotId);
   return {
     path: file.relative_path,
     type: "file",
@@ -135,9 +136,9 @@ function manifestFileMapItem(file: ManifestFile): FileMapItem {
     size_bytes: file.byte_count,
     line_count: file.line_count,
     fetchable: file.fetchable,
-    indexed: file.index_admitted,
+    indexed: state === "indexed",
     state,
-    exclusion_reason: state === "indexed" ? null : (file.fetch_reject_reason ?? file.index_reject_reason ?? "not_fetchable"),
+    exclusion_reason: state === "indexed" ? null : (file.fetch_reject_reason ?? indexSkipReason(snapshotId, file.relative_path) ?? file.index_reject_reason ?? "not_fetchable"),
   };
 }
 
@@ -253,7 +254,7 @@ export async function repoFiles(
     exclusionReasonSummary.set(reasonKey(excluded.reason), (exclusionReasonSummary.get(reasonKey(excluded.reason)) ?? 0) + 1);
   }
 
-  const indexedItems = manifest.files.map(manifestFileMapItem);
+  const indexedItems = manifest.files.map((file) => manifestFileMapItem(file, ctx.snapshot_id));
   const excludedItems = states.includes("excluded")
     ? manifest.excluded_files.map(excludedFileMapItem)
     : [];
@@ -275,7 +276,7 @@ export async function repoFiles(
     discovered_total: manifest.files.length + manifest.excluded_files.length,
     matching_total: matching.length,
     fetchable_total: manifest.files.filter((file) => file.fetchable).length,
-    indexed_total: manifest.files.filter((file) => file.index_admitted).length,
+    indexed_total: manifest.files.filter((file) => file.index_admitted && isPathIndexed(ctx.snapshot_id, file.relative_path)).length,
     excluded_total: manifest.excluded_files.length + manifest.files.filter((file) => !file.fetchable).length,
     returned: page.length,
     exclusion_reasons: Object.fromEntries(Array.from(exclusionReasonSummary.entries()).sort((a, b) => a[0].localeCompare(b[0]))),
@@ -393,7 +394,7 @@ export async function repoTreer(
   }>();
 
   for (const file of manifest.files) {
-    if (!file.index_admitted) continue;
+    if (!file.fetchable) continue;
     if (prefix && !file.relative_path.startsWith(prefix + "/") && file.relative_path !== prefix) continue;
 
     const remainder = prefix && file.relative_path.startsWith(prefix + "/")

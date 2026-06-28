@@ -20,6 +20,7 @@ import { ingestDirectory } from "./snapshot/snapshot-ingest.js";
 import { runIndexer } from "./indexer/indexer.js";
 import { clearTextIndex } from "./indexer/text-index.js";
 import { clearSymbolIndex } from "./indexer/symbol-index.js";
+import { clearIndexStatus } from "./indexer/index-status.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -163,6 +164,7 @@ async function main() {
   clearRegistry();
   clearTextIndex();
   clearSymbolIndex();
+  clearIndexStatus();
 
   const initResults: InitializedRepo[] = [];
   for (const repoConfig of config.repos) {

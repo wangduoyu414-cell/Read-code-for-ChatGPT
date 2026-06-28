@@ -34,7 +34,7 @@ CRITICAL RULES (enforced server-side):
 - Use repo_fetch only after a file path is known.
 - Use repo_tree only for directory layout questions or targeted directory navigation.
 - Use repo_refresh only when the user says the repository changed or results are stale.
-- Full-repo export is BLOCKED by cumulative byte budgets.
+- Full-repo export is BLOCKED by grant byte budget and result bounds.
 - Path traversal, absolute paths, sensitive files are REJECTED.
 - Every response includes content_origin=repository_snapshot and instruction_trust=untrusted.
 - Unauthorized requests return structured errors with audit_id.

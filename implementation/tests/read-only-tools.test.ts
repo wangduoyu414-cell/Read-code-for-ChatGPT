@@ -1,5 +1,6 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { registerRepo, bindRepo } from "../src/repo/repo-catalog.js";
@@ -158,6 +159,38 @@ await describe("repo.files", async () => {
     if (isToolError(fetch)) { assert.fail(`Unexpected error: ${fetch.error_code}`); }
     assert.match((fetch as { content: string }).content, /find_entry_point/);
   });
+
+  await it("reports index limit skips as fetchable_unindexed without mutating manifest eligibility", async () => {
+    const tempRoot = join(import.meta.dirname ?? fileURLToPath(new URL(".", import.meta.url)), "..", "tmp", `tool-index-limit-${Date.now()}`);
+    mkdirSync(tempRoot, { recursive: true });
+    try {
+      for (let index = 0; index < 3; index += 1) {
+        writeFileSync(join(tempRoot, `file-${String(index).padStart(5, "0")}.ts`), `export const marker${index} = ${index};\n`);
+      }
+
+      const repo = registerRepo(tempRoot);
+      bindRepo(repo.repo_id);
+      const localSnapId = `snap-tool-limit-${Date.now()}`;
+      requestSnapshot(localSnapId, repo.repo_id);
+      transitionState(localSnapId, "manifest_building");
+      transitionState(localSnapId, "filtering");
+      const { manifest: localManifest } = ingestDirectory(tempRoot, repo.repo_id, localSnapId);
+      attachManifest(localSnapId, localManifest);
+      runIndexer(localManifest, tempRoot, { maxIndexedFiles: 2 });
+
+      const files = await repoFiles({ repo_id: repo.repo_id, repo_path: tempRoot, snapshot_id: localSnapId, states: ["fetchable_unindexed"], limit: 10 }, localManifest, budget);
+      if (isToolError(files)) { assert.fail(`Unexpected error: ${files.error_code}`); }
+      const fileMap = files as { items: Array<{ path: string; fetchable: boolean; indexed: boolean; state: string; exclusion_reason: string | null }>; counts: { matching_total: number; indexed_total: number } };
+      assert.equal(fileMap.counts.matching_total, 1);
+      assert.equal(fileMap.items[0]?.path, "file-00002.ts");
+      assert.equal(fileMap.items[0]?.fetchable, true);
+      assert.equal(fileMap.items[0]?.indexed, false);
+      assert.equal(fileMap.items[0]?.state, "fetchable_unindexed");
+      assert.equal(fileMap.items[0]?.exclusion_reason, "index_file_limit");
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 await describe("repo.fetch", async () => {
@@ -252,12 +285,12 @@ await describe("Cross-tool snapshot consistency (SNAP-002)", async () => {
 });
 
 await describe("Budget cumulative enforcement", async () => {
-  await it("session budget accumulates across calls", async () => {
+  await it("session byte accounting accumulates across calls", async () => {
     const b = createBudgetState();
     // Make multiple search calls
     await repoSearcher({ repo_id: repoId, repo_path: rootDir, snapshot_id: snapId, query: "App", limit: 3 }, manifest, rootDir, b);
     await repoSearcher({ repo_id: repoId, repo_path: rootDir, snapshot_id: snapId, query: "Button", limit: 3 }, manifest, rootDir, b);
-    // Budget should have accumulated bytes
+    // Session byte accounting should have accumulated bytes
     assert.ok(b.sessionBytesUsed > 0);
     assert.ok(b.toolCallCount >= 2);
   });

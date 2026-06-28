@@ -215,7 +215,7 @@ await describe("Tool Dispatch (with runtime)", async () => {
     assert.equal(isToolError(r), false);
     const data = r as { items: Array<{ path: string; fetchable: boolean; indexed: boolean; state: string }>; has_more: boolean };
     assert.deepEqual(data.items.map((item) => item.path), ["src/index.ts", "src/ui/Button.tsx"]);
-    assert.ok(data.items.every((item) => item.fetchable === true && item.indexed === true && item.state === "indexed"));
+    assert.ok(data.items.every((item) => item.fetchable === true && item.indexed === false && item.state === "fetchable_unindexed"));
     assert.equal(data.has_more, false);
   });
 
@@ -441,9 +441,11 @@ await describe("Config", async () => {
     assert.equal(CONFIG.contentOrigin, "repository_snapshot");
     assert.equal(CONFIG.instructionTrust, "untrusted");
   });
-  await it("has budget limits", () => {
-    assert.ok(CONFIG.budget.singleResponseMaxBytes > 0);
-    assert.ok(CONFIG.budget.sessionTotalBytes > 0);
+  await it("has disabled per-response and per-fetch-window limits with grant budget retained", () => {
+    assert.equal(CONFIG.budget.singleResponseMaxBytes, null);
+    assert.equal(CONFIG.budget.singleFileLineWindowMax, null);
+    assert.equal(CONFIG.budget.throttleMaxCalls, null);
+    assert.equal(CONFIG.budget.sessionTotalBytes, null);
     assert.ok(CONFIG.budget.grantTotalBytes > 0);
   });
 });

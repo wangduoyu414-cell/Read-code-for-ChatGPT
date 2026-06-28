@@ -87,8 +87,12 @@ export function truncateContent(content: string, maxBytes: number): RedactionRes
 /**
  * Full content sanitization pipeline: redact then truncate.
  */
-export function sanitizeContent(content: string, maxBytes: number): RedactionResult {
+export function sanitizeContent(content: string, maxBytes: number | null): RedactionResult {
   const redactResult = redactContent(content);
+  if (maxBytes === null) {
+    return redactResult;
+  }
+
   const truncResult = truncateContent(redactResult.redacted, maxBytes);
   return {
     redacted: truncResult.redacted,

@@ -35,13 +35,15 @@ const SYMBOL_PATTERNS: Array<{ pattern: RegExp; kind: string; extensions: string
 
 let symbolIndex = new Map<string, SymbolHit[]>();
 
-export function buildSymbolIndex(manifest: SnapshotManifest, rootDir: string): void {
+export function buildSymbolIndex(manifest: SnapshotManifest, rootDir: string): Set<string> {
   const symbols: SymbolHit[] = [];
+  const indexedPaths = new Set<string>();
   for (const file of manifest.files) {
     if (!file.index_admitted) continue;
     const ext = file.extension;
     try {
       const content = readFileSync(join(rootDir, file.relative_path), "utf-8");
+      indexedPaths.add(file.relative_path);
       const lines = content.split("\n");
       const applicable = SYMBOL_PATTERNS.filter((p) => p.extensions.includes(ext));
 
@@ -66,6 +68,7 @@ export function buildSymbolIndex(manifest: SnapshotManifest, rootDir: string): v
     }
   }
   symbolIndex.set(manifest.snapshot_id, symbols);
+  return indexedPaths;
 }
 
 export function searchSymbols(

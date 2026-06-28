@@ -90,7 +90,7 @@ Compatibility note: older ChatGPT conversations may refer to the connector entry
 - sensitive paths such as `.git`, `.env`, private keys, and credential files are rejected
 - binary files, oversized files, and sensitive files are excluded
 - system/unreadable directories are skipped and recorded
-- response size, session budget, tool call count, and tree depth are capped
+- single-response size, single-fetch line window, and shared throttle ceilings are disabled by default; grant budget, tree depth, and result counts remain capped, while session bytes and tool calls are still tracked
 - returned repository content is marked `content_origin=repository_snapshot` and `instruction_trust=untrusted`
 - ChatGPT can use the single configured repository automatically, but arbitrary paths are still rejected; in multi-repository mode it must choose a configured `repo_path`
 

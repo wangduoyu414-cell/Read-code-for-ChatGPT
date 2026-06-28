@@ -15,7 +15,7 @@ The current project mode is `dev_local`（本地开发）. It is ready for local
 
 ## 1. What ChatGPT Gets（ChatGPT 能获得什么）
 
-ChatGPT receives bounded, non-destructive tools:
+ChatGPT receives read-only, non-destructive tools:
 
 | Tool | What it does |
 |---|---|
@@ -25,11 +25,11 @@ ChatGPT receives bounded, non-destructive tools:
 | `repo_files` | List a paginated file map with fetch/index/exclusion status, without file contents. |
 | `repo_symbols` | Find lightweight symbol definitions. |
 | `repo_search` | Search indexed text. |
-| `repo_fetch` | Read a bounded line range from one file. |
+| `repo_fetch` | Read the requested line range from one file. |
 | `repo_tree` | List bounded repository paths for directory or layout questions. |
 | `repo_refresh` | Re-scan only when the repository changed or the snapshot may be stale. |
 
-The server rejects absolute paths, parent traversal, sensitive files, oversized responses, unsupported files, and unreadable/system directories. Repository content is returned as untrusted data.
+The server rejects absolute paths, parent traversal, sensitive files, unsupported files, and unreadable/system directories. Single-response size, single-fetch line window, and shared throttle ceilings are disabled by default; grant budget and result-count bounds remain active. Repository content is returned as untrusted data.
 
 Readable repository files include common source, config, and documentation files, plus common project text files such as `Dockerfile`, `Makefile`, `LICENSE`, `.gitignore`, and unknown-extension files that pass a lightweight text check. Binary files and sensitive files stay excluded.
 
@@ -70,17 +70,15 @@ node ./node_modules/typescript/bin/tsc -p tsconfig.json
 node --import tsx --test tests/*.test.ts
 ```
 
-## 4. Start With A Fixture（先用测试仓库启动）
+## 4. Start With Configured Repositories（按配置仓库启动）
 
 ```powershell
 node dist/startup.js --port 3100
 ```
 
-Default authorized root:
+Default authorized roots come from `<implementation-root>/server.config.json`. Use `repo_list` after startup to see the exact configured `repo_path` values.
 
-```text
-implementation/fixtures/safe-repo
-```
+For fixture-only validation, set `repos[]` back to `implementation/fixtures/safe-repo` or start with `--repo "./fixtures/safe-repo"`.
 
 Local endpoints:
 

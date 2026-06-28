@@ -24,18 +24,21 @@ interface IndexEntry {
 
 let textIndex = new Map<string, IndexEntry[]>();
 
-export function buildTextIndex(manifest: SnapshotManifest, rootDir: string): void {
+export function buildTextIndex(manifest: SnapshotManifest, rootDir: string): Set<string> {
   const entries: IndexEntry[] = [];
+  const indexedPaths = new Set<string>();
   for (const file of manifest.files) {
     if (!file.index_admitted) continue;
     try {
       const content = readFileSync(join(rootDir, file.relative_path), "utf-8");
       entries.push({ file, lines: content.split("\n") });
+      indexedPaths.add(file.relative_path);
     } catch {
       // Skip unreadable files
     }
   }
   textIndex.set(manifest.snapshot_id, entries);
+  return indexedPaths;
 }
 
 export function searchText(

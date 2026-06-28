@@ -65,7 +65,7 @@ export const CONFIG = {
       name: "repo_fetch" as const,
       title: "Repository Fetch Segment",
       description:
-        "Fetch a bounded line segment from a known file path. Use this after repo_files, repo_search, repo_symbols, or a targeted repo_tree identifies the file. Rejects absolute paths, parent-directory traversal, symlink escapes, and sensitive files. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo_list.",
+        "Fetch the requested line segment from a known file path. Use this after repo_files, repo_search, repo_symbols, or a targeted repo_tree identifies the file. Rejects absolute paths, parent-directory traversal, symlink escapes, and sensitive files. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo_list.",
       pathMaxLength: 512,
       purposeMaxLength: 256,
     },
@@ -102,20 +102,20 @@ export const CONFIG = {
 
   /** Budget defaults — all enforced server-side, never trusted from hints. */
   budget: {
-    singleResponseMaxBytes: 64 * 1024, // 64 KiB
-    singleFileLineWindowMax: 200,
-    sessionTotalBytes: 2 * 1024 * 1024, // 2 MiB
+    singleResponseMaxBytes: null as number | null,
+    singleFileLineWindowMax: null as number | null,
+    sessionTotalBytes: null as number | null,
     grantTotalBytes: 10 * 1024 * 1024, // 10 MiB
-    toolCallCount: 500,
+    toolCallCount: null as number | null,
     treeMaxDepth: 4,
     searchHitMax: 20,
     symbolHitMax: 50,
     throttleWindowMs: 60_000,
-    throttleMaxCalls: 60, // per window
+    throttleMaxCalls: null as number | null,
   },
 
   /** Policy version — must increment on any policy or schema change. */
-  policyVersion: "policy-2026-06-22-v4",
+  policyVersion: "policy-2026-06-24-v5",
 
   /** Content origin and trust markers for prompt-injection isolation (§17.5). */
   contentOrigin: "repository_snapshot" as const,

@@ -93,7 +93,7 @@ Out of scope（范围外）：
 - INV-003：`MCP roots`（模型上下文协议根目录）不是访问控制，不能作为放行依据。
 - INV-004：仓库内容永远是不可信数据，不能作为系统指令、工具描述或动态策略输入。
 - INV-005：每次工具调用必须校验 `user_id`、`repo_id`、`snapshot_id`、路径、工具、结果大小、作用域和策略版本。
-- INV-006：只读也属于数据导出，必须有单次、单会话、单工具和单快照限额。
+- INV-006：只读也属于数据导出，必须有单次、单授权、限流窗口和结果规模限额；可配置预算项为 `null` 时只记录适用计数/字节而不拒绝。
 - INV-007：索引准入、结果返回、日志写入三层都必须过滤敏感数据。
 - INV-008：日志只存结构化元数据；默认不落原始代码正文、原始提示词、令牌、密钥或凭据。
 - INV-009：本地 `MCP server`（模型上下文协议服务器）必须低权限运行，只挂载授权快照，不挂载用户家目录、`SSH`（安全外壳）目录或云凭据目录。
@@ -282,7 +282,7 @@ completion status（完成状态）：
 - `snapshot_id`（快照标识）。
 - allowed_tools（允许工具）：只能为 `repo.search`、`repo.fetch`、`repo.tree`、`repo.symbols`、`repo.refresh` 的子集。
 - allowed_paths（允许路径集合）：第一版为快照内全部非敏感文本路径或更小集合。
-- data_budget（数据预算）：单次字节、单会话字节、单授权累计字节、调用次数、树深、结果条数。
+- data_budget（数据预算）：单次字节、单会话字节（`null` 表示不设单会话上限但仍计数）、单授权累计字节、调用次数（`null` 表示不设调用次数上限但仍计数）、树深、结果条数。
 - expiry（过期时间）。
 - revoked_at（撤销时间）。
 - policy_version（策略版本）。
@@ -325,17 +325,17 @@ completion status（完成状态）：
 ### 17.4 Data Exfiltration Budget（数据外泄预算）
 
 只读不是无限导出。第一版必须定义并测试以下预算：
-- single_response_max_bytes（单响应最大字节）。
-- single_file_line_window_max（单文件最大行窗口）。
-- session_total_bytes（单会话累计字节）。
+- single_response_max_bytes（单响应最大字节；当前配置为 `null` 时表示不设单响应上限）。
+- single_file_line_window_max（单文件最大行窗口；当前配置为 `null` 时表示不设单次行窗口上限）。
+- session_total_bytes（单会话累计字节；`null` 表示不设单会话上限但仍计数）。
 - grant_total_bytes（单授权累计字节）。
-- tool_call_count（工具调用次数）。
+- tool_call_count（工具调用次数，当前配置为 `null` 时表示所有已配置项目不设调用次数上限）。
 - tree_max_depth（目录树最大深度）。
 - search_hit_max（搜索命中最大数）。
 - symbol_hit_max（符号命中最大数）。
-- throttle_window（限流窗口）。
+- throttle_window（限流窗口；当前配置为 `null` 时表示不设限流窗口上限）。
 
-预算耗尽返回 `rate_limited` 或 `budget_exceeded`，不得通过多次小请求继续导出。
+预算耗尽返回 `rate_limited` 或 `budget_exceeded`。当单响应、单文件行窗口、单会话和限流窗口上限关闭时，单授权累计预算、路径策略、敏感文件过滤和结果规模上限仍必须阻止无界导出。
 
 ### 17.5 Prompt-Injection Isolation Contract（提示注入隔离契约）
 

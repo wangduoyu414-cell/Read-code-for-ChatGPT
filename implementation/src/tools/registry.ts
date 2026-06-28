@@ -414,8 +414,8 @@ function summarizeTopDirs(manifest: unknown, limit = 12): string[] {
   const dirs = new Set<string>();
   for (const file of files) {
     if (typeof file !== "object" || file === null) continue;
-    const item = file as { relative_path?: unknown; index_admitted?: unknown };
-    if (item.index_admitted !== true || typeof item.relative_path !== "string") continue;
+    const item = file as { relative_path?: unknown; fetchable?: unknown };
+    if (item.fetchable !== true || typeof item.relative_path !== "string") continue;
     const [first] = item.relative_path.split("/");
     if (first && item.relative_path.includes("/")) dirs.add(first);
     if (dirs.size >= limit) break;
@@ -431,8 +431,8 @@ function summarizeLanguages(manifest: unknown, limit = 5): string[] {
   const counts = new Map<string, number>();
   for (const file of files) {
     if (typeof file !== "object" || file === null) continue;
-    const item = file as { language?: unknown; index_admitted?: unknown };
-    if (item.index_admitted !== true || typeof item.language !== "string" || item.language.length === 0) continue;
+    const item = file as { language?: unknown; fetchable?: unknown };
+    if (item.fetchable !== true || typeof item.language !== "string" || item.language.length === 0) continue;
     counts.set(item.language, (counts.get(item.language) ?? 0) + 1);
   }
 

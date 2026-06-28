@@ -12,6 +12,7 @@
 import type { SnapshotManifest } from "../snapshot/manifest.js";
 import { buildTextIndex, clearTextIndex } from "./text-index.js";
 import { buildSymbolIndex, clearSymbolIndex } from "./symbol-index.js";
+import { clearIndexStatus, setIndexStatus } from "./index-status.js";
 
 const INDEX_TIMEOUT_MS = 30_000;
 const MAX_INDEXED_FILES = 10_000;
@@ -27,6 +28,7 @@ export interface IndexResult {
 
 export interface RunIndexerOptions {
   clearExisting?: boolean;
+  maxIndexedFiles?: number;
 }
 
 export function runIndexer(manifest: SnapshotManifest, rootDir: string, options: RunIndexerOptions = {}): IndexResult {
@@ -37,20 +39,48 @@ export function runIndexer(manifest: SnapshotManifest, rootDir: string, options:
   if (options.clearExisting ?? true) {
     clearTextIndex();
     clearSymbolIndex();
+    clearIndexStatus();
   }
 
   // Count admitted files (do NOT mutate the manifest — GAP-010 fix)
   const admitted = manifest.files.filter((f) => f.index_admitted);
-  const toIndex = admitted.slice(0, MAX_INDEXED_FILES);
-  files_skipped = Math.max(0, admitted.length - MAX_INDEXED_FILES);
+  const maxIndexedFiles = options.maxIndexedFiles ?? MAX_INDEXED_FILES;
+  const toIndex = admitted.slice(0, maxIndexedFiles);
+  const skippedByLimit = admitted.slice(maxIndexedFiles);
+  files_skipped = skippedByLimit.length;
   // Build a non-mutating shallow view for the indexers
   const indexableManifest = { ...manifest, files: toIndex };
 
   try {
-    buildTextIndex(indexableManifest, rootDir);
-    buildSymbolIndex(indexableManifest, rootDir);
-    files_indexed = toIndex.length;
+    const textIndexedPaths = buildTextIndex(indexableManifest, rootDir);
+    const symbolIndexedPaths = buildSymbolIndex(indexableManifest, rootDir);
+    const indexedPaths = new Set([...textIndexedPaths, ...symbolIndexedPaths]);
+    const skippedPaths = new Set(skippedByLimit.map((file) => file.relative_path));
+    const skipReasonByPath = new Map(skippedByLimit.map((file) => [file.relative_path, "index_file_limit"]));
+
+    for (const file of toIndex) {
+      if (!indexedPaths.has(file.relative_path)) {
+        skippedPaths.add(file.relative_path);
+        skipReasonByPath.set(file.relative_path, "index_read_failed");
+      }
+    }
+
+    setIndexStatus({
+      snapshot_id: manifest.snapshot_id,
+      indexed_paths: indexedPaths,
+      skipped_paths: skippedPaths,
+      skip_reason_by_path: skipReasonByPath,
+    });
+
+    files_indexed = indexedPaths.size;
+    files_skipped = skippedPaths.size;
   } catch (err) {
+    setIndexStatus({
+      snapshot_id: manifest.snapshot_id,
+      indexed_paths: [],
+      skipped_paths: admitted.map((file) => file.relative_path),
+      skip_reason_by_path: admitted.map((file) => [file.relative_path, "index_failed"]),
+    });
     return {
       snapshot_id: manifest.snapshot_id,
       files_indexed: 0,

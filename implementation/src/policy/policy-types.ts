@@ -33,11 +33,11 @@ export interface Grant {
 }
 
 export interface GrantBudget {
-  single_response_max_bytes: number;
-  single_file_line_window_max: number;
-  session_total_bytes: number;
+  single_response_max_bytes: number | null;
+  single_file_line_window_max: number | null;
+  session_total_bytes: number | null;
   grant_total_bytes: number;
-  tool_call_count: number;
+  tool_call_count: number | null;
   tree_max_depth: number;
   search_hit_max: number;
   symbol_hit_max: number;

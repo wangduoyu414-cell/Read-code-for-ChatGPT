@@ -2,7 +2,7 @@
  * Budget model — enforces cumulative data exfiltration limits.
  * Implements §17.4 data exfiltration budget from task-card.md.
  *
- * Tracks: per-response, per-session, per-grant byte budgets;
+ * Tracks: per-response and per-grant byte budgets, session byte accounting;
  * call counts, tree depth, search/symbol hit limits, throttle windows.
  */
 
@@ -50,12 +50,17 @@ export function checkResponseBytes(
   snapshot_id: string,
   audit_id: string,
 ): BudgetCheckResult {
-  if (byteCount > CONFIG.budget.singleResponseMaxBytes) {
+  const responseLimit = CONFIG.budget.singleResponseMaxBytes;
+  if (responseLimit === null) {
+    return { allowed: true };
+  }
+
+  if (byteCount > responseLimit) {
     return {
       allowed: false,
       error: toolError(
         "result_too_large",
-        `Response size ${byteCount} exceeds limit ${CONFIG.budget.singleResponseMaxBytes}.`,
+        `Response size ${byteCount} exceeds limit ${responseLimit}.`,
         repo_id,
         snapshot_id,
         CONFIG.policyVersion,
@@ -67,7 +72,7 @@ export function checkResponseBytes(
 }
 
 /**
- * Check and update session cumulative budget.
+ * Check and update session byte accounting; enforce only when configured.
  */
 export function checkSessionBudget(
   additionalBytes: number,
@@ -76,13 +81,19 @@ export function checkSessionBudget(
   snapshot_id: string,
   audit_id: string,
 ): BudgetCheckResult {
+  const sessionLimit = CONFIG.budget.sessionTotalBytes;
+  if (sessionLimit === null) {
+    state.sessionBytesUsed += additionalBytes;
+    return { allowed: true };
+  }
+
   const newTotal = state.sessionBytesUsed + additionalBytes;
-  if (newTotal > CONFIG.budget.sessionTotalBytes) {
+  if (newTotal > sessionLimit) {
     return {
       allowed: false,
       error: toolError(
         "budget_exceeded",
-        `Session budget exceeded: ${newTotal} > ${CONFIG.budget.sessionTotalBytes}.`,
+        `Session budget exceeded: ${newTotal} > ${sessionLimit}.`,
         repo_id,
         snapshot_id,
         CONFIG.policyVersion,
@@ -133,12 +144,13 @@ export function checkCallCount(
   snapshot_id: string,
   audit_id: string,
 ): BudgetCheckResult {
-  if (state.toolCallCount >= CONFIG.budget.toolCallCount) {
+  const toolCallLimit = CONFIG.budget.toolCallCount;
+  if (toolCallLimit !== null && state.toolCallCount >= toolCallLimit) {
     return {
       allowed: false,
       error: toolError(
         "budget_exceeded",
-        `Tool call count exceeded: ${state.toolCallCount} >= ${CONFIG.budget.toolCallCount}.`,
+        `Tool call count exceeded: ${state.toolCallCount} >= ${toolCallLimit}.`,
         repo_id,
         snapshot_id,
         CONFIG.policyVersion,
@@ -160,18 +172,24 @@ export function checkThrottle(
   snapshot_id: string,
   audit_id: string,
 ): BudgetCheckResult {
+  const throttleMaxCalls = CONFIG.budget.throttleMaxCalls;
+  if (throttleMaxCalls === null) {
+    state.lastCallTimestamp = Date.now();
+    return { allowed: true };
+  }
+
   const now = Date.now();
   if (now - state.windowStartTimestamp >= CONFIG.budget.throttleWindowMs) {
     // New window
     state.windowStartTimestamp = now;
     state.callsInCurrentWindow = 0;
   }
-  if (state.callsInCurrentWindow >= CONFIG.budget.throttleMaxCalls) {
+  if (state.callsInCurrentWindow >= throttleMaxCalls) {
     return {
       allowed: false,
       error: toolError(
         "rate_limited",
-        `Throttle limit: ${CONFIG.budget.throttleMaxCalls} calls per ${CONFIG.budget.throttleWindowMs}ms.`,
+        `Throttle limit: ${throttleMaxCalls} calls per ${CONFIG.budget.throttleWindowMs}ms.`,
         repo_id,
         snapshot_id,
         CONFIG.policyVersion,
@@ -277,12 +295,18 @@ export function checkLineWindow(
       error: toolError("access_denied", "line_end must be >= line_start.", repo_id, snapshot_id, CONFIG.policyVersion, audit_id),
     };
   }
-  if (window > CONFIG.budget.singleFileLineWindowMax) {
+
+  const lineWindowLimit = CONFIG.budget.singleFileLineWindowMax;
+  if (lineWindowLimit === null) {
+    return { allowed: true };
+  }
+
+  if (window > lineWindowLimit) {
     return {
       allowed: false,
       error: toolError(
         "result_too_large",
-        `Line window ${window} exceeds limit ${CONFIG.budget.singleFileLineWindowMax}.`,
+        `Line window ${window} exceeds limit ${lineWindowLimit}.`,
         repo_id,
         snapshot_id,
         CONFIG.policyVersion,

@@ -13,7 +13,7 @@ import { CONFIG } from "../config.js";
 export const CONNECTOR_METADATA = {
   name: CONFIG.server.name,
   description:
-    "Read-only MCP bridge that lets ChatGPT inspect authorized local repository snapshots through file maps, search, symbols, bounded fetch, and refresh. All tools are read-only; repository content is untrusted data and full-repo export is blocked by cumulative byte budgets.",
+    "Read-only MCP bridge that lets ChatGPT inspect authorized local repository snapshots through file maps, search, symbols, bounded fetch, and refresh. All tools are read-only; repository content is untrusted data and full-repo export is blocked by grant byte budget and result bounds.",
   mcp_endpoint: "/mcp",
   version: CONFIG.server.version,
   mode: "dev_local" as const, // dev_local | production

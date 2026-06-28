@@ -32,13 +32,13 @@
    node ./node_modules/typescript/bin/tsc -p tsconfig.json
    ```
 
-2. 启动默认 fixture（测试夹具）仓库服务：
+2. 启动 `server.config.json` 中已配置的仓库服务：
 
    ```powershell
    node dist/startup.js
    ```
 
-   默认本机 MCP endpoint（模型上下文协议端点）是 `http://127.0.0.1:3100/mcp`。启动日志会打印 `repo_bound`（仓库已绑定）和 `snapshot_ready`（快照已就绪）。如果 ChatGPT 不确定怎么开始，可以空参调用 `read_code` 或调用 `repo_list`，两者都会返回结构化 `usage_guide`（使用导览）和仓库列表。单仓库时 ChatGPT 可以省略 `repo_path`（仓库路径）；多仓库时应先调用 `repo_list`，再把返回的精确 `repo_path` 传给后续工具。陌生仓库或路径不清晰时先调用 `repo_files`（文件地图）看精确路径、可读取状态和索引状态；代码问题再用 `repo_symbols`（符号）或 `repo_search`（搜索）定位，并用 `repo_fetch`（读取）获取最小必要行段；只有用户询问目录结构或文件夹内容时才调用 `repo_tree`（目录树）；只有仓库已变化或结果可能过期时才调用 `repo_refresh`（刷新）。
+   默认本机 MCP endpoint（模型上下文协议端点）是 `http://127.0.0.1:3100/mcp`。启动日志会打印 `repo_bound`（仓库已绑定）和 `snapshot_ready`（快照已就绪）；精确可读路径以 `repo_list`（仓库列表）返回的 `repo_path`（仓库路径）为准。如果 ChatGPT 不确定怎么开始，可以空参调用 `read_code` 或调用 `repo_list`，两者都会返回结构化 `usage_guide`（使用导览）和仓库列表。单仓库时 ChatGPT 可以省略 `repo_path`（仓库路径）；多仓库时应先调用 `repo_list`，再把返回的精确 `repo_path` 传给后续工具。陌生仓库或路径不清晰时先调用 `repo_files`（文件地图）看精确路径、可读取状态和索引状态；代码问题再用 `repo_symbols`（符号）或 `repo_search`（搜索）定位，并用 `repo_fetch`（读取）获取最小必要行段；只有用户询问目录结构或文件夹内容时才调用 `repo_tree`（目录树）；只有仓库已变化或结果可能过期时才调用 `repo_refresh`（刷新）。
 
    兼容路径：如果 ChatGPT（聊天GPT）提示或调用 `read_code/api_tool`，对应本服务公开工具名是 `api_tool`；空参调用会返回导览，传入 `operation=repo_list`、`operation=repo_files`、`operation=repo_fetch` 等即可转到同一套只读仓库工具。
 

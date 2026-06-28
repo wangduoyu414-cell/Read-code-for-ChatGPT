@@ -92,19 +92,20 @@ await describe("Budget", async () => {
     assert.equal(r.allowed, true);
   });
 
-  await it("checkResponseBytes rejects oversized response", () => {
+  await it("checkResponseBytes allows large responses when the response limit is disabled", () => {
     const r = checkResponseBytes(10 * 1024 * 1024, TEST_REPO, TEST_SNAP, aid());
-    assert.equal(r.allowed, false);
-    assert.equal(r.error?.error_code, "result_too_large");
+    assert.equal(r.allowed, true);
+    assert.equal(r.error, undefined);
   });
 
-  await it("checkSessionBudget accumulates and rejects overflow", () => {
+  await it("checkSessionBudget allows unlimited session bytes when no limit is configured", () => {
     const state = createBudgetState();
     const r1 = checkSessionBudget(1_000_000, state, TEST_REPO, TEST_SNAP, aid());
     assert.equal(r1.allowed, true);
     const r2 = checkSessionBudget(2_000_000, state, TEST_REPO, TEST_SNAP, aid());
-    assert.equal(r2.allowed, false);
-    assert.equal(r2.error?.error_code, "budget_exceeded");
+    assert.equal(r2.allowed, true);
+    assert.equal(state.sessionBytesUsed, 3_000_000);
+    assert.equal(r2.error, undefined);
   });
 
   await it("checkGrantBudget accumulates and rejects overflow", () => {
@@ -116,26 +117,25 @@ await describe("Budget", async () => {
     assert.equal(r2.error?.error_code, "budget_exceeded");
   });
 
-  await it("checkCallCount enforces limit", () => {
+  await it("checkCallCount allows unlimited calls when no limit is configured", () => {
     const state = createBudgetState();
     state.toolCallCount = 499;
     const r1 = checkCallCount(state, TEST_REPO, TEST_SNAP, aid());
     assert.equal(r1.allowed, true);
     assert.equal(state.toolCallCount, 500);
     const r2 = checkCallCount(state, TEST_REPO, TEST_SNAP, aid());
-    assert.equal(r2.allowed, false);
-    assert.equal(r2.error?.error_code, "budget_exceeded");
+    assert.equal(r2.allowed, true);
+    assert.equal(state.toolCallCount, 501);
+    assert.equal(r2.error, undefined);
   });
 
-  await it("checkThrottle allows burst then rejects", () => {
+  await it("checkThrottle is disabled while still updating call timestamps", () => {
     const state = createBudgetState();
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 120; i++) {
       const r = checkThrottle(state, TEST_REPO, TEST_SNAP, aid());
       assert.equal(r.allowed, true);
     }
-    const r = checkThrottle(state, TEST_REPO, TEST_SNAP, aid());
-    assert.equal(r.allowed, false);
-    assert.equal(r.error?.error_code, "rate_limited");
+    assert.equal(state.callsInCurrentWindow, 0);
   });
 
   await it("checkTreeDepth rejects excessive depth", () => {
@@ -150,10 +150,10 @@ await describe("Budget", async () => {
     assert.equal(r.error?.error_code, "access_denied");
   });
 
-  await it("checkLineWindow rejects oversized window", () => {
+  await it("checkLineWindow allows large windows when the line limit is disabled", () => {
     const r = checkLineWindow(1, 500, TEST_REPO, TEST_SNAP, aid());
-    assert.equal(r.allowed, false);
-    assert.equal(r.error?.error_code, "result_too_large");
+    assert.equal(r.allowed, true);
+    assert.equal(r.error, undefined);
   });
 });
 
