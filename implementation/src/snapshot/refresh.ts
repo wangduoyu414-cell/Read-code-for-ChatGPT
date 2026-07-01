@@ -9,10 +9,13 @@ import { toolError, type ToolError } from "../errors.js";
 import { checkCallCount, checkGrantBudget, checkResponseBytes, checkSessionBudget, checkThrottle, type BudgetState } from "../security/budget.js";
 import { wrapRepositoryContent } from "../security/redaction.js";
 import { runIndexer } from "../indexer/indexer.js";
+import { deleteTextIndex } from "../indexer/text-index.js";
+import { deleteSymbolIndex } from "../indexer/symbol-index.js";
+import { deleteIndexStatus } from "../indexer/index-status.js";
 import type { IndexResult } from "../indexer/indexer.js";
 import type { SnapshotManifest } from "./manifest.js";
 import { ingestDirectory } from "./snapshot-ingest.js";
-import { attachManifest, requestSnapshot, transitionState } from "./snapshot-registry.js";
+import { attachManifest, deleteSnapshot, requestSnapshot, transitionState } from "./snapshot-registry.js";
 
 interface RefreshSnapshotParams {
   repo_id: string;
@@ -85,6 +88,13 @@ function responseIndexSummary(indexResult: IndexResult): Record<string, unknown>
     files_skipped: indexResult.files_skipped,
     duration_ms: indexResult.duration_ms,
   };
+}
+
+function releaseSnapshotResources(snapshotId: string): void {
+  deleteTextIndex(snapshotId);
+  deleteSymbolIndex(snapshotId);
+  deleteIndexStatus(snapshotId);
+  deleteSnapshot(snapshotId);
 }
 
 export async function refreshRepositorySnapshot(params: RefreshSnapshotParams): Promise<ToolError | Record<string, unknown>> {
@@ -166,6 +176,7 @@ export async function refreshRepositorySnapshot(params: RefreshSnapshotParams): 
     }
 
     params.publishSnapshot(manifest, nextSnapshotId);
+    releaseSnapshotResources(params.current_snapshot_id);
     return response;
   } catch (err) {
     if (nextSnapshotId !== null) {

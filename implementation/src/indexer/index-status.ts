@@ -36,3 +36,7 @@ export function indexSkipReason(snapshotId: string, relativePath: string): strin
 export function clearIndexStatus(): void {
   statusBySnapshot.clear();
 }
+
+export function deleteIndexStatus(snapshotId: string): void {
+  statusBySnapshot.delete(snapshotId);
+}

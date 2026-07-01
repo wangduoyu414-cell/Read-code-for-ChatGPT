@@ -69,3 +69,7 @@ export function rejectIfNotReady(snapshot_id: string): ErrorCode | null {
 export function clearRegistry(): void {
   registry.clear();
 }
+
+export function deleteSnapshot(snapshot_id: string): void {
+  registry.delete(snapshot_id);
+}

@@ -9,8 +9,9 @@ import { createBudgetState } from "../src/security/budget.js";
 import { runIndexer } from "../src/indexer/indexer.js";
 import { clearTextIndex } from "../src/indexer/text-index.js";
 import { clearSymbolIndex } from "../src/indexer/symbol-index.js";
+import { clearIndexStatus } from "../src/indexer/index-status.js";
 import { ingestDirectory } from "../src/snapshot/snapshot-ingest.js";
-import { attachManifest, clearRegistry, requestSnapshot, transitionState } from "../src/snapshot/snapshot-registry.js";
+import { attachManifest, clearRegistry, getSnapshot, requestSnapshot, transitionState } from "../src/snapshot/snapshot-registry.js";
 import { getRuntimeState, handleToolCall, setRuntimeState } from "../src/tools/registry.js";
 import { isToolError } from "../src/errors.js";
 import { normalizeRepoRootPath } from "../src/repo/repo-catalog.js";
@@ -24,6 +25,7 @@ function initializeRuntime(rootDir: string) {
   clearRegistry();
   clearTextIndex();
   clearSymbolIndex();
+  clearIndexStatus();
 
   const repo = registerRepo(rootDir);
   bindRepo(repo.repo_id);
@@ -82,6 +84,7 @@ await describe("repo_refresh", async () => {
       assert.equal(stateAfter.sessionSnapshotId, refreshData.snapshot_id);
       assert.equal(stateAfter.budgetState, budgetBefore);
       assert.ok(stateAfter.budgetState.toolCallCount >= 2);
+      assert.equal(getSnapshot(snapId), undefined);
 
       const afterRefresh = await handleToolCall("repo_search", { repo_path: repoPath, query: "fresh-marker", limit: 10 }, "audit-after-refresh");
       assert.equal(isToolError(afterRefresh), false);
@@ -89,6 +92,19 @@ await describe("repo_refresh", async () => {
       assert.equal(hits.length, 1);
       assert.equal(hits[0]?.path, "new.local");
       assert.equal(hits[0]?.snapshot_id, refreshData.snapshot_id);
+
+      writeFileSync(join(root, "second.local"), "second-marker=true\n");
+      const secondRefresh = await handleToolCall("repo_refresh", { repo_path: repoPath, reason: "second test" }, "audit-second-refresh");
+      assert.equal(isToolError(secondRefresh), false);
+      const secondRefreshData = secondRefresh as { snapshot_id: string; previous_snapshot_id: string };
+      assert.equal(secondRefreshData.previous_snapshot_id, refreshData.snapshot_id);
+      assert.equal(getSnapshot(refreshData.snapshot_id), undefined);
+
+      const latestSearch = await handleToolCall("repo_search", { repo_path: repoPath, query: "second-marker", limit: 10 }, "audit-after-second-refresh");
+      assert.equal(isToolError(latestSearch), false);
+      const latestHits = (latestSearch as { hits: Array<{ path: string; snapshot_id: string }> }).hits;
+      assert.equal(latestHits.length, 1);
+      assert.equal(latestHits[0]?.snapshot_id, secondRefreshData.snapshot_id);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

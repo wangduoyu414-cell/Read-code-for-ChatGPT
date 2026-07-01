@@ -79,3 +79,7 @@ export function searchText(
 export function clearTextIndex(): void {
   textIndex.clear();
 }
+
+export function deleteTextIndex(snapshotId: string): void {
+  textIndex.delete(snapshotId);
+}

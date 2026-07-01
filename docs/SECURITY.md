@@ -20,7 +20,7 @@ The runtime exposes non-destructive tools scoped to configured repository roots:
 - `repo_symbols`
 - `repo_refresh`
 
-Server-side guards reject absolute paths, parent traversal, sensitive file names, unsupported files, and suspicious secret content. Byte-budget, result-count, line-window, tree-depth, and throttle ceilings are disabled by default, while usage counters are still tracked for diagnostics. Repository content is always marked as untrusted data. `repo_files` returns only a file map with fetch/index/exclusion status, not file contents. `repo_refresh` updates only the server's in-memory snapshot/index and keeps the previous snapshot active if refresh fails.
+Server-side guards reject absolute paths, parent traversal, sensitive file names, unsupported files, and suspicious secret content. Byte-budget, result-count, line-window, tree-depth, and throttle ceilings are disabled by default, while usage counters are still tracked for diagnostics. Repository content is always marked as untrusted data. `repo_files` returns only a file map with fetch/index/exclusion status, not file contents. `repo_refresh` updates only the server's in-memory snapshot/index, releases the previous snapshot/index after a successful refresh, and keeps the previous snapshot active if refresh fails.
 
 ## Real Repository Usage（真实仓库使用）
 

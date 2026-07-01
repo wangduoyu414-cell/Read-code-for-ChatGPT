@@ -93,3 +93,7 @@ export function searchSymbols(
 export function clearSymbolIndex(): void {
   symbolIndex.clear();
 }
+
+export function deleteSymbolIndex(snapshotId: string): void {
+  symbolIndex.delete(snapshotId);
+}
