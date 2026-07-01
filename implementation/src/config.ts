@@ -1,5 +1,5 @@
 /**
- * Server configuration — single source of truth for all bounds and defaults.
+ * Server configuration — single source of truth for defaults and optional bounds.
  * All values here derive from task-card.md security invariants and tool-schemas.json.
  */
 
@@ -46,7 +46,7 @@ export const CONFIG = {
         "Search indexed text, config, docs, and error strings within an authorized immutable repository snapshot. Use repo_files first when paths are unclear or a large repository may contain fetchable files that are not indexed. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo_list.",
       queryMaxLength: 512,
       defaultLimit: 10,
-      maxLimit: 20,
+      maxLimit: null as number | null,
     },
 
     files: {
@@ -58,7 +58,7 @@ export const CONFIG = {
       filterMaxItems: 20,
       cursorMaxLength: 2048,
       defaultLimit: 100,
-      maxLimit: 500,
+      maxLimit: null as number | null,
     },
 
     fetch: {
@@ -74,11 +74,11 @@ export const CONFIG = {
       name: "repo_tree" as const,
       title: "Repository Tree",
       description:
-        "List a small, bounded directory summary for navigation only. Use this when the user asks about project layout or a specific directory; prefer repo_files, repo_search, or repo_symbols for finding code. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo_list.",
+        "List a directory summary for navigation only. Use this when the user asks about project layout or a specific directory; prefer repo_files, repo_search, or repo_symbols for finding code. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo_list.",
       defaultDepth: 1,
-      maxDepth: 4,
+      maxDepth: null as number | null,
       defaultLimit: 50,
-      maxLimit: 200,
+      maxLimit: null as number | null,
     },
 
     symbols: {
@@ -88,7 +88,7 @@ export const CONFIG = {
         "Find class, function, and other lightweight symbol definitions. Prefer this first when the user asks where a symbol is defined. First version: definitions only (no references, usages, or cross-file call graphs). If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo_list.",
       queryMaxLength: 256,
       defaultLimit: 20,
-      maxLimit: 50,
+      maxLimit: null as number | null,
     },
 
     refresh: {
@@ -105,17 +105,17 @@ export const CONFIG = {
     singleResponseMaxBytes: null as number | null,
     singleFileLineWindowMax: null as number | null,
     sessionTotalBytes: null as number | null,
-    grantTotalBytes: 10 * 1024 * 1024, // 10 MiB
+    grantTotalBytes: null as number | null,
     toolCallCount: null as number | null,
-    treeMaxDepth: 4,
-    searchHitMax: 20,
-    symbolHitMax: 50,
+    treeMaxDepth: null as number | null,
+    searchHitMax: null as number | null,
+    symbolHitMax: null as number | null,
     throttleWindowMs: 60_000,
     throttleMaxCalls: null as number | null,
   },
 
   /** Policy version — must increment on any policy or schema change. */
-  policyVersion: "policy-2026-06-24-v5",
+  policyVersion: "policy-2026-07-01-v6",
 
   /** Content origin and trust markers for prompt-injection isolation (§17.5). */
   contentOrigin: "repository_snapshot" as const,

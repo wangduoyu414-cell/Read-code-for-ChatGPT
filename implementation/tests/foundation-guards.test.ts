@@ -108,13 +108,14 @@ await describe("Budget", async () => {
     assert.equal(r2.error, undefined);
   });
 
-  await it("checkGrantBudget accumulates and rejects overflow", () => {
+  await it("checkGrantBudget accumulates without rejecting when grant limit is disabled", () => {
     const state = createBudgetState();
     const r1 = checkGrantBudget(9_000_000, state, TEST_REPO, TEST_SNAP, aid());
     assert.equal(r1.allowed, true);
     const r2 = checkGrantBudget(2_000_000, state, TEST_REPO, TEST_SNAP, aid());
-    assert.equal(r2.allowed, false);
-    assert.equal(r2.error?.error_code, "budget_exceeded");
+    assert.equal(r2.allowed, true);
+    assert.equal(state.grantBytesUsed, 11_000_000);
+    assert.equal(r2.error, undefined);
   });
 
   await it("checkCallCount allows unlimited calls when no limit is configured", () => {
@@ -138,10 +139,10 @@ await describe("Budget", async () => {
     assert.equal(state.callsInCurrentWindow, 0);
   });
 
-  await it("checkTreeDepth rejects excessive depth", () => {
+  await it("checkTreeDepth allows high depth when the depth limit is disabled", () => {
     const r = checkTreeDepth(5, TEST_REPO, TEST_SNAP, aid());
-    assert.equal(r.allowed, false);
-    assert.equal(r.error?.error_code, "result_too_large");
+    assert.equal(r.allowed, true);
+    assert.equal(r.error, undefined);
   });
 
   await it("checkLineWindow rejects negative window", () => {

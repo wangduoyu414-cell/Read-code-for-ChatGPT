@@ -2,7 +2,7 @@
 
 让 ChatGPT 读懂你的本地仓库，但只走你授权的、只读的 MCP（Model Context Protocol，模型上下文协议）通道。
 
-`Read Code for ChatGPT` is a local read-only MCP bridge（本地只读连接桥）for real repositories. You choose one or more folders, the server snapshots them, and ChatGPT gets a small set of safe tools: list repositories, inspect the file map, search indexed text, find symbols, fetch bounded line ranges, and refresh the snapshot when files change.
+`Read Code for ChatGPT` is a local read-only MCP bridge（本地只读连接桥）for real repositories. You choose one or more folders, the server snapshots them, and ChatGPT gets a small set of safe tools: list repositories, inspect the file map, search indexed text, find symbols, fetch requested line ranges, and refresh the snapshot when files change.
 
 It is built for the moment when pasting files into chat stops working, but giving a model your whole machine would be a bad idea. ChatGPT can ask better questions about your codebase; the server still owns the boundary.
 
@@ -18,10 +18,10 @@ ChatGPT can reason across architecture, tasks, tests, and implementation details
 - inspect a paginated file map before guessing paths
 - find lightweight symbol definitions
 - search code and docs
-- fetch bounded line ranges
+- fetch requested line ranges
 - browse an authorized file tree only when directory layout is requested
 
-The design goal is not "give the model my whole disk". The design goal is: **authorize explicit folders, expose bounded non-destructive tools, mark repository content as untrusted data, and keep server-side limits in charge.**
+The design goal is not "give the model my whole disk". The design goal is: **authorize explicit folders, expose non-destructive tools, mark repository content as untrusted data, and keep repository-boundary safeguards in charge.**
 
 ## What ChatGPT Can Read
 
@@ -75,8 +75,8 @@ Large repositories may have files that are fetchable but not indexed for search.
 | `repo_files` | List a paginated file map with fetch/index/exclusion status, without file contents. |
 | `repo_symbols` | Find lightweight symbol definitions. |
 | `repo_search` | Search indexed text snippets. |
-| `repo_fetch` | Fetch a bounded line segment from one file. |
-| `repo_tree` | List a bounded directory tree when directory layout is requested. |
+| `repo_fetch` | Fetch a requested line segment from one file. |
+| `repo_tree` | List a directory tree when directory layout is requested. |
 | `repo_refresh` | Re-scan the authorized root only when the repository changed or the snapshot may be stale. |
 
 All tools are non-destructive for your repository. `repo_refresh` updates only the server's in-memory snapshot/index. There is no shell execution, no write API（应用程序接口）, and no full repository export tool.
@@ -90,7 +90,7 @@ Compatibility note: older ChatGPT conversations may refer to the connector entry
 - sensitive paths such as `.git`, `.env`, private keys, and credential files are rejected
 - binary files, oversized files, and sensitive files are excluded
 - system/unreadable directories are skipped and recorded
-- single-response size, single-fetch line window, and shared throttle ceilings are disabled by default; grant budget, tree depth, and result counts remain capped, while session bytes and tool calls are still tracked
+- single-response size, single-fetch line window, grant byte budget, tree depth, result-count, and shared throttle ceilings are disabled by default; session bytes, grant bytes, and tool calls are still tracked for diagnostics
 - returned repository content is marked `content_origin=repository_snapshot` and `instruction_trust=untrusted`
 - ChatGPT can use the single configured repository automatically, but arbitrary paths are still rejected; in multi-repository mode it must choose a configured `repo_path`
 

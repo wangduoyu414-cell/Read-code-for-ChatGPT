@@ -70,6 +70,10 @@ function stableStringArray(values: string[] | undefined): string[] {
   return Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean))).sort();
 }
 
+function applyOptionalMax(value: number, maxValue: number | null): number {
+  return maxValue === null ? value : Math.min(value, maxValue);
+}
+
 function filesFilterKey(args: {
   repo_path: string;
   snapshot_id: string;
@@ -169,13 +173,13 @@ export async function repoSearcher(
   const notReady = rejectIfNotReady(ctx.snapshot_id);
   if (notReady) return toolError(notReady, `Snapshot ${ctx.snapshot_id} is ${notReady}.`, ctx.repo_id, ctx.snapshot_id, CONFIG.policyVersion, ctx.audit_id);
 
-  // Budget: throttle + call count + grant budget
+  // Budget accounting: throttle/call/grant checks only reject when configured.
   const throttle = checkThrottle(budget, ctx.repo_id, ctx.snapshot_id, ctx.audit_id);
   if (!throttle.allowed) return throttle.error!;
   const cc = checkCallCount(budget, ctx.repo_id, ctx.snapshot_id, ctx.audit_id);
   if (!cc.allowed) return cc.error!;
 
-  const limit = Math.min(args.limit ?? CONFIG.tools.search.defaultLimit, CONFIG.tools.search.maxLimit);
+  const limit = applyOptionalMax(args.limit ?? CONFIG.tools.search.defaultLimit, CONFIG.tools.search.maxLimit);
   const hits = searchText(ctx.snapshot_id, args.query, limit);
 
   const hitCheck = checkSearchHitLimit(hits.length, ctx.repo_id, ctx.snapshot_id, ctx.audit_id);
@@ -234,7 +238,7 @@ export async function repoFiles(
   const prefix = normalizeOptionalPrefix(args.prefix, ctx.repo_id, ctx.snapshot_id, ctx.audit_id);
   if (typeof prefix !== "string" && prefix !== undefined) return prefix;
 
-  const limit = Math.min(args.limit ?? CONFIG.tools.files.defaultLimit, CONFIG.tools.files.maxLimit);
+  const limit = applyOptionalMax(args.limit ?? CONFIG.tools.files.defaultLimit, CONFIG.tools.files.maxLimit);
   const suffixes = stableStringArray(args.suffixes).map((suffix) => suffix.toLowerCase());
   const languages = stableStringArray(args.languages).map((language) => language.toLowerCase());
   const states = normalizeStateFilters(args.states);
@@ -378,11 +382,11 @@ export async function repoTreer(
   const notReady = rejectIfNotReady(ctx.snapshot_id);
   if (notReady) return toolError(notReady, `Snapshot ${ctx.snapshot_id} is ${notReady}.`, ctx.repo_id, ctx.snapshot_id, CONFIG.policyVersion, ctx.audit_id);
 
-  const depth = Math.min(args.depth ?? CONFIG.tools.tree.defaultDepth, CONFIG.tools.tree.maxDepth);
+  const depth = applyOptionalMax(args.depth ?? CONFIG.tools.tree.defaultDepth, CONFIG.tools.tree.maxDepth);
   const td = checkTreeDepth(depth, ctx.repo_id, ctx.snapshot_id, ctx.audit_id);
   if (!td.allowed) return td.error!;
 
-  const limit = Math.min(args.limit ?? CONFIG.tools.tree.defaultLimit, CONFIG.tools.tree.maxLimit);
+  const limit = applyOptionalMax(args.limit ?? CONFIG.tools.tree.defaultLimit, CONFIG.tools.tree.maxLimit);
   const prefix = normalizeTreePrefix(args.path, ctx.repo_id, ctx.snapshot_id, ctx.audit_id);
   if (typeof prefix !== "string") return prefix;
 
@@ -449,7 +453,7 @@ export async function repoSymbols(
   const notReady = rejectIfNotReady(ctx.snapshot_id);
   if (notReady) return toolError(notReady, `Snapshot ${ctx.snapshot_id} is ${notReady}.`, ctx.repo_id, ctx.snapshot_id, CONFIG.policyVersion, ctx.audit_id);
 
-  const limit = Math.min(args.limit ?? CONFIG.tools.symbols.defaultLimit, CONFIG.tools.symbols.maxLimit);
+  const limit = applyOptionalMax(args.limit ?? CONFIG.tools.symbols.defaultLimit, CONFIG.tools.symbols.maxLimit);
   const symbols = searchSymbols(ctx.snapshot_id, args.query, args.language, limit);
 
   const sc = checkSymbolHitLimit(symbols.length, ctx.repo_id, ctx.snapshot_id, ctx.audit_id);

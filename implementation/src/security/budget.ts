@@ -1,5 +1,5 @@
 /**
- * Budget model — enforces cumulative data exfiltration limits.
+ * Budget model — tracks cumulative data exposure and enforces only configured limits.
  * Implements §17.4 data exfiltration budget from task-card.md.
  *
  * Tracks: per-response and per-grant byte budgets, session byte accounting;
@@ -116,13 +116,19 @@ export function checkGrantBudget(
   snapshot_id: string,
   audit_id: string,
 ): BudgetCheckResult {
+  const grantLimit = CONFIG.budget.grantTotalBytes;
+  if (grantLimit === null) {
+    state.grantBytesUsed += additionalBytes;
+    return { allowed: true };
+  }
+
   const newTotal = state.grantBytesUsed + additionalBytes;
-  if (newTotal > CONFIG.budget.grantTotalBytes) {
+  if (newTotal > grantLimit) {
     return {
       allowed: false,
       error: toolError(
         "budget_exceeded",
-        `Grant budget exceeded: ${newTotal} > ${CONFIG.budget.grantTotalBytes}.`,
+        `Grant budget exceeded: ${newTotal} > ${grantLimit}.`,
         repo_id,
         snapshot_id,
         CONFIG.policyVersion,
@@ -212,12 +218,17 @@ export function checkTreeDepth(
   snapshot_id: string,
   audit_id: string,
 ): BudgetCheckResult {
-  if (depth > CONFIG.budget.treeMaxDepth) {
+  const depthLimit = CONFIG.budget.treeMaxDepth;
+  if (depthLimit === null) {
+    return { allowed: true };
+  }
+
+  if (depth > depthLimit) {
     return {
       allowed: false,
       error: toolError(
         "result_too_large",
-        `Tree depth ${depth} exceeds limit ${CONFIG.budget.treeMaxDepth}.`,
+        `Tree depth ${depth} exceeds limit ${depthLimit}.`,
         repo_id,
         snapshot_id,
         CONFIG.policyVersion,
@@ -237,12 +248,17 @@ export function checkSearchHitLimit(
   snapshot_id: string,
   audit_id: string,
 ): BudgetCheckResult {
-  if (count > CONFIG.budget.searchHitMax) {
+  const hitLimit = CONFIG.budget.searchHitMax;
+  if (hitLimit === null) {
+    return { allowed: true };
+  }
+
+  if (count > hitLimit) {
     return {
       allowed: false,
       error: toolError(
         "result_too_large",
-        `Search hits ${count} exceeds limit ${CONFIG.budget.searchHitMax}.`,
+        `Search hits ${count} exceeds limit ${hitLimit}.`,
         repo_id,
         snapshot_id,
         CONFIG.policyVersion,
@@ -262,12 +278,17 @@ export function checkSymbolHitLimit(
   snapshot_id: string,
   audit_id: string,
 ): BudgetCheckResult {
-  if (count > CONFIG.budget.symbolHitMax) {
+  const hitLimit = CONFIG.budget.symbolHitMax;
+  if (hitLimit === null) {
+    return { allowed: true };
+  }
+
+  if (count > hitLimit) {
     return {
       allowed: false,
       error: toolError(
         "result_too_large",
-        `Symbol hits ${count} exceeds limit ${CONFIG.budget.symbolHitMax}.`,
+        `Symbol hits ${count} exceeds limit ${hitLimit}.`,
         repo_id,
         snapshot_id,
         CONFIG.policyVersion,

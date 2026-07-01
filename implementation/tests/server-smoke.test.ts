@@ -441,12 +441,15 @@ await describe("Config", async () => {
     assert.equal(CONFIG.contentOrigin, "repository_snapshot");
     assert.equal(CONFIG.instructionTrust, "untrusted");
   });
-  await it("has disabled per-response and per-fetch-window limits with grant budget retained", () => {
+  await it("has disabled byte, count, depth, and throttle limits", () => {
     assert.equal(CONFIG.budget.singleResponseMaxBytes, null);
     assert.equal(CONFIG.budget.singleFileLineWindowMax, null);
     assert.equal(CONFIG.budget.throttleMaxCalls, null);
     assert.equal(CONFIG.budget.sessionTotalBytes, null);
-    assert.ok(CONFIG.budget.grantTotalBytes > 0);
+    assert.equal(CONFIG.budget.grantTotalBytes, null);
+    assert.equal(CONFIG.budget.treeMaxDepth, null);
+    assert.equal(CONFIG.budget.searchHitMax, null);
+    assert.equal(CONFIG.budget.symbolHitMax, null);
   });
 });
 

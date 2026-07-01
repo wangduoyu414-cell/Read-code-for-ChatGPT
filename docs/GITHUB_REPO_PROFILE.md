@@ -4,7 +4,7 @@ Use this page when filling GitHub repository About（简介）、topics（主题
 
 ## Short Description（短简介）
 
-Let ChatGPT read authorized local repositories through a read-only MCP bridge for file maps, search, symbols, bounded fetch, and refresh.
+Let ChatGPT read authorized local repositories through a read-only MCP bridge for file maps, search, symbols, requested-range fetch, and refresh.
 
 ## Homepage / Website（主页链接）
 
@@ -41,7 +41,7 @@ Let ChatGPT read authorized local repositories through a read-only MCP file map,
 
 ## Longer Project Summary（长描述）
 
-`Read Code for ChatGPT` is a local read-only MCP（Model Context Protocol，模型上下文协议）server for real codebases. You authorize one or more repository folders, the server builds bounded snapshots, and ChatGPT can inspect repository structure, file maps, symbols, search results, and small file segments without receiving shell, write, git, or full-repository export access.
+`Read Code for ChatGPT` is a local read-only MCP（Model Context Protocol，模型上下文协议）server for real codebases. You authorize one or more repository folders, the server builds repository snapshots, and ChatGPT can inspect repository structure, file maps, symbols, search results, and requested file segments without receiving shell, write, git, or arbitrary filesystem access.
 
 The project is for developers who want ChatGPT to understand local code without pasting files into a chat window and without exposing an entire machine.
 

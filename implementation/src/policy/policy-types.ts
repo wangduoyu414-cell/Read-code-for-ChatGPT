@@ -36,11 +36,11 @@ export interface GrantBudget {
   single_response_max_bytes: number | null;
   single_file_line_window_max: number | null;
   session_total_bytes: number | null;
-  grant_total_bytes: number;
+  grant_total_bytes: number | null;
   tool_call_count: number | null;
-  tree_max_depth: number;
-  search_hit_max: number;
-  symbol_hit_max: number;
+  tree_max_depth: number | null;
+  search_hit_max: number | null;
+  symbol_hit_max: number | null;
 }
 
 // ─── Policy version ──────────────────────────────────────────────────────────

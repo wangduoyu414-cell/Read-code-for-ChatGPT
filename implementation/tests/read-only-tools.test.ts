@@ -284,7 +284,7 @@ await describe("Cross-tool snapshot consistency (SNAP-002)", async () => {
   });
 });
 
-await describe("Budget cumulative enforcement", async () => {
+await describe("Budget cumulative accounting", async () => {
   await it("session byte accounting accumulates across calls", async () => {
     const b = createBudgetState();
     // Make multiple search calls
@@ -295,7 +295,7 @@ await describe("Budget cumulative enforcement", async () => {
     assert.ok(b.toolCallCount >= 2);
   });
 
-  await it("grant budget accumulates across calls", async () => {
+  await it("grant byte accounting accumulates across calls", async () => {
     const b = createBudgetState();
     await repoFetcher({ repo_id: repoId, repo_path: rootDir, snapshot_id: snapId, path: "src/index.ts", line_start: 10, line_end: 18, purpose: "test" }, manifest, rootDir, b);
     assert.ok(b.grantBytesUsed > 0);

@@ -26,10 +26,10 @@ ChatGPT receives read-only, non-destructive tools:
 | `repo_symbols` | Find lightweight symbol definitions. |
 | `repo_search` | Search indexed text. |
 | `repo_fetch` | Read the requested line range from one file. |
-| `repo_tree` | List bounded repository paths for directory or layout questions. |
+| `repo_tree` | List repository paths for directory or layout questions. |
 | `repo_refresh` | Re-scan only when the repository changed or the snapshot may be stale. |
 
-The server rejects absolute paths, parent traversal, sensitive files, unsupported files, and unreadable/system directories. Single-response size, single-fetch line window, and shared throttle ceilings are disabled by default; grant budget and result-count bounds remain active. Repository content is returned as untrusted data.
+The server rejects absolute paths, parent traversal, sensitive files, unsupported files, and unreadable/system directories. Single-response size, single-fetch line window, grant byte budget, tree depth, result-count, and shared throttle ceilings are disabled by default; session bytes, grant bytes, and tool calls are still tracked for diagnostics. Repository content is returned as untrusted data.
 
 Readable repository files include common source, config, and documentation files, plus common project text files such as `Dockerfile`, `Makefile`, `LICENSE`, `.gitignore`, and unknown-extension files that pass a lightweight text check. Binary files and sensitive files stay excluded.
 
@@ -211,7 +211,7 @@ Expected result:
 [OK] repo_tree
 ```
 
-The check verifies the local MCP server, tool registration, first-use guide, repository listing, file map listing, bounded fetch, and a small tree read. It also probes the default local tunnel admin endpoint if available. To require tunnel health:
+The check verifies the local MCP server, tool registration, first-use guide, repository listing, file map listing, requested-range fetch, and a small tree read. It also probes the default local tunnel admin endpoint if available. To require tunnel health:
 
 ```powershell
 $env:READ_CODE_REQUIRE_TUNNEL = "1"

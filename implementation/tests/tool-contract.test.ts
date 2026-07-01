@@ -51,6 +51,15 @@ function inputProperty(toolName: string, propertyName: string): Record<string, u
   return property as Record<string, unknown>;
 }
 
+function assertOptionalMaximum(toolName: string, propertyName: string, expected: number | null): void {
+  const property = inputProperty(toolName, propertyName);
+  if (expected === null) {
+    assert.equal("maximum" in property, false, `${toolName}.${propertyName} must not expose a maximum when the bound is disabled`);
+    return;
+  }
+  assert.equal(property.maximum, expected);
+}
+
 function outputProperty(toolName: string, propertyName: string): Record<string, unknown> {
   const tool = schemaToolsByName.get(toolName);
   assert.ok(tool, `${toolName} must exist in tool-schemas.json`);
@@ -118,7 +127,7 @@ await describe("Public tool contract", async () => {
 
     assert.equal(inputProperty(CONFIG.tools.search.name, "query").maxLength, CONFIG.tools.search.queryMaxLength);
     assert.equal(inputProperty(CONFIG.tools.search.name, "limit").default, CONFIG.tools.search.defaultLimit);
-    assert.equal(inputProperty(CONFIG.tools.search.name, "limit").maximum, CONFIG.tools.search.maxLimit);
+    assertOptionalMaximum(CONFIG.tools.search.name, "limit", CONFIG.tools.search.maxLimit);
 
     assert.equal(inputProperty(CONFIG.tools.files.name, "prefix").maxLength, CONFIG.tools.files.prefixMaxLength);
     assert.equal(inputProperty(CONFIG.tools.files.name, "suffixes").maxItems, CONFIG.tools.files.filterMaxItems);
@@ -126,19 +135,19 @@ await describe("Public tool contract", async () => {
     assert.equal(inputProperty(CONFIG.tools.files.name, "states").maxItems, 3);
     assert.equal(inputProperty(CONFIG.tools.files.name, "cursor").maxLength, CONFIG.tools.files.cursorMaxLength);
     assert.equal(inputProperty(CONFIG.tools.files.name, "limit").default, CONFIG.tools.files.defaultLimit);
-    assert.equal(inputProperty(CONFIG.tools.files.name, "limit").maximum, CONFIG.tools.files.maxLimit);
+    assertOptionalMaximum(CONFIG.tools.files.name, "limit", CONFIG.tools.files.maxLimit);
 
     assert.equal(inputProperty(CONFIG.tools.fetch.name, "path").maxLength, CONFIG.tools.fetch.pathMaxLength);
     assert.equal(inputProperty(CONFIG.tools.fetch.name, "purpose").maxLength, CONFIG.tools.fetch.purposeMaxLength);
 
     assert.equal(inputProperty(CONFIG.tools.tree.name, "depth").default, CONFIG.tools.tree.defaultDepth);
-    assert.equal(inputProperty(CONFIG.tools.tree.name, "depth").maximum, CONFIG.tools.tree.maxDepth);
+    assertOptionalMaximum(CONFIG.tools.tree.name, "depth", CONFIG.tools.tree.maxDepth);
     assert.equal(inputProperty(CONFIG.tools.tree.name, "limit").default, CONFIG.tools.tree.defaultLimit);
-    assert.equal(inputProperty(CONFIG.tools.tree.name, "limit").maximum, CONFIG.tools.tree.maxLimit);
+    assertOptionalMaximum(CONFIG.tools.tree.name, "limit", CONFIG.tools.tree.maxLimit);
 
     assert.equal(inputProperty(CONFIG.tools.symbols.name, "query").maxLength, CONFIG.tools.symbols.queryMaxLength);
     assert.equal(inputProperty(CONFIG.tools.symbols.name, "limit").default, CONFIG.tools.symbols.defaultLimit);
-    assert.equal(inputProperty(CONFIG.tools.symbols.name, "limit").maximum, CONFIG.tools.symbols.maxLimit);
+    assertOptionalMaximum(CONFIG.tools.symbols.name, "limit", CONFIG.tools.symbols.maxLimit);
 
     assert.equal(inputProperty(CONFIG.tools.refresh.name, "reason").maxLength, CONFIG.tools.refresh.reasonMaxLength);
   });

@@ -49,6 +49,16 @@ const snapshotSchema = z.string().min(1).optional();
 const listInputSchema = z.object({});
 const apiToolObjectSchema = z.record(z.string(), z.unknown());
 
+function positiveIntWithOptionalMax(maxValue: number | null, defaultValue: number) {
+  const schema = z.number().int().min(1);
+  return (maxValue === null ? schema : schema.max(maxValue)).default(defaultValue);
+}
+
+function nonNegativeIntWithOptionalMax(maxValue: number | null, defaultValue: number) {
+  const schema = z.number().int().min(0);
+  return (maxValue === null ? schema : schema.max(maxValue)).default(defaultValue);
+}
+
 const apiToolInputSchema = z.object({
   tool: z.string().optional(),
   tool_name: z.string().optional(),
@@ -73,7 +83,7 @@ function searchInputSchema(requireRepoPath: boolean) {
     snapshot_id: snapshotSchema,
     query: z.string().min(1).max(CONFIG.tools.search.queryMaxLength),
     mode: z.enum(["text", "symbol", "hybrid"]).default("text"),
-    limit: z.number().int().min(1).max(CONFIG.tools.search.maxLimit).default(CONFIG.tools.search.defaultLimit),
+    limit: positiveIntWithOptionalMax(CONFIG.tools.search.maxLimit, CONFIG.tools.search.defaultLimit),
   });
 }
 
@@ -97,7 +107,7 @@ function filesInputSchema(requireRepoPath: boolean) {
     languages: z.array(z.string().min(1).max(64)).max(CONFIG.tools.files.filterMaxItems).optional(),
     states: z.array(z.enum(["indexed", "fetchable_unindexed", "excluded"])).max(3).optional(),
     cursor: z.string().max(CONFIG.tools.files.cursorMaxLength).optional(),
-    limit: z.number().int().min(1).max(CONFIG.tools.files.maxLimit).default(CONFIG.tools.files.defaultLimit),
+    limit: positiveIntWithOptionalMax(CONFIG.tools.files.maxLimit, CONFIG.tools.files.defaultLimit),
   });
 }
 
@@ -106,8 +116,8 @@ function treeInputSchema(requireRepoPath: boolean) {
     repo_path: repoPathFieldSchema(requireRepoPath),
     snapshot_id: snapshotSchema,
     path: z.string().default("."),
-    depth: z.number().int().min(0).max(CONFIG.tools.tree.maxDepth).default(CONFIG.tools.tree.defaultDepth),
-    limit: z.number().int().min(1).max(CONFIG.tools.tree.maxLimit).default(CONFIG.tools.tree.defaultLimit),
+    depth: nonNegativeIntWithOptionalMax(CONFIG.tools.tree.maxDepth, CONFIG.tools.tree.defaultDepth),
+    limit: positiveIntWithOptionalMax(CONFIG.tools.tree.maxLimit, CONFIG.tools.tree.defaultLimit),
   });
 }
 
@@ -117,7 +127,7 @@ function symbolsInputSchema(requireRepoPath: boolean) {
     snapshot_id: snapshotSchema,
     query: z.string().min(1).max(CONFIG.tools.symbols.queryMaxLength),
     language: z.string().optional(),
-    limit: z.number().int().min(1).max(CONFIG.tools.symbols.maxLimit).default(CONFIG.tools.symbols.defaultLimit),
+    limit: positiveIntWithOptionalMax(CONFIG.tools.symbols.maxLimit, CONFIG.tools.symbols.defaultLimit),
   });
 }
 

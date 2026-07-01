@@ -1,5 +1,5 @@
 {
-  "schema_version": "2026-06-23-design-v8",
+  "schema_version": "2026-07-01-design-v9",
   "tools": [
     {
       "name": "read_code",
@@ -452,7 +452,6 @@
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 20,
             "default": 10
           }
         }
@@ -617,7 +616,6 @@
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 500,
             "default": 100
           }
         }
@@ -869,7 +867,7 @@
     {
       "name": "repo_tree",
       "title": "Repository Tree",
-      "description": "List a small, bounded directory summary for navigation only. Use this when the user asks about project layout or a specific directory; prefer repo_files, repo_search, or repo_symbols for finding code. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo_list.",
+      "description": "List a directory summary for navigation only. Use this when the user asks about project layout or a specific directory; prefer repo_files, repo_search, or repo_symbols for finding code. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo_list.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -911,13 +909,11 @@
           "depth": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 4,
             "default": 1
           },
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 200,
             "default": 50
           }
         }
@@ -1054,7 +1050,6 @@
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 50,
             "default": 20
           }
         }

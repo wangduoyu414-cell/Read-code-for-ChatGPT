@@ -282,7 +282,7 @@ completion status（完成状态）：
 - `snapshot_id`（快照标识）。
 - allowed_tools（允许工具）：只能为 `repo.search`、`repo.fetch`、`repo.tree`、`repo.symbols`、`repo.refresh` 的子集。
 - allowed_paths（允许路径集合）：第一版为快照内全部非敏感文本路径或更小集合。
-- data_budget（数据预算）：单次字节、单会话字节（`null` 表示不设单会话上限但仍计数）、单授权累计字节、调用次数（`null` 表示不设调用次数上限但仍计数）、树深、结果条数。
+- data_budget（数据预算）：单次字节、单会话字节、单授权累计字节、调用次数、树深、结果条数；每个预算项为 `null` 时表示不设对应硬上限但仍保留运行计数。
 - expiry（过期时间）。
 - revoked_at（撤销时间）。
 - policy_version（策略版本）。
@@ -324,18 +324,18 @@ completion status（完成状态）：
 
 ### 17.4 Data Exfiltration Budget（数据外泄预算）
 
-只读不是无限导出。第一版必须定义并测试以下预算：
-- single_response_max_bytes（单响应最大字节；当前配置为 `null` 时表示不设单响应上限）。
-- single_file_line_window_max（单文件最大行窗口；当前配置为 `null` 时表示不设单次行窗口上限）。
+只读仍然必须受授权仓库、路径策略、敏感文件过滤和快照范围约束。预算项用于可选的运行硬上限和诊断计数；当前本地连接器配置关闭以下硬上限：
+- single_response_max_bytes（单响应最大字节；`null` 表示不设单响应上限）。
+- single_file_line_window_max（单文件最大行窗口；`null` 表示不设单次行窗口上限）。
 - session_total_bytes（单会话累计字节；`null` 表示不设单会话上限但仍计数）。
-- grant_total_bytes（单授权累计字节）。
-- tool_call_count（工具调用次数，当前配置为 `null` 时表示所有已配置项目不设调用次数上限）。
-- tree_max_depth（目录树最大深度）。
-- search_hit_max（搜索命中最大数）。
-- symbol_hit_max（符号命中最大数）。
-- throttle_window（限流窗口；当前配置为 `null` 时表示不设限流窗口上限）。
+- grant_total_bytes（单授权累计字节；`null` 表示不设单授权累计字节上限但仍计数）。
+- tool_call_count（工具调用次数；`null` 表示不设调用次数上限但仍计数）。
+- tree_max_depth（目录树最大深度；`null` 表示不设目录树深度上限）。
+- search_hit_max（搜索命中最大数；`null` 表示不设搜索命中硬上限）。
+- symbol_hit_max（符号命中最大数；`null` 表示不设符号命中硬上限）。
+- throttle_window（限流窗口；`null` 表示不设限流窗口上限）。
 
-预算耗尽返回 `rate_limited` 或 `budget_exceeded`。当单响应、单文件行窗口、单会话和限流窗口上限关闭时，单授权累计预算、路径策略、敏感文件过滤和结果规模上限仍必须阻止无界导出。
+当某个预算项配置为非 `null` 且耗尽时，返回 `rate_limited` 或 `budget_exceeded`；当预算项为 `null` 时，不得因该预算项拒绝请求。预算关闭不代表允许任意文件系统读取；绝对路径、路径穿越、未授权仓库、敏感文件和快照外文件仍必须拒绝。
 
 ### 17.5 Prompt-Injection Isolation Contract（提示注入隔离契约）
 
