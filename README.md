@@ -1,253 +1,161 @@
 # Read Code for ChatGPT
 
-让 ChatGPT 读懂你的本地仓库，但只走你授权的、只读的 MCP（Model Context Protocol，模型上下文协议）通道。
+> 让 ChatGPT 在明确授权、只读且可核验的边界内理解你的本地代码仓库。
 
-`Read Code for ChatGPT` is a local read-only MCP bridge（本地只读连接桥）for real repositories. You choose one or more folders, the server snapshots them, and ChatGPT gets a small set of safe tools: list repositories, inspect the file map, search indexed text, find symbols, fetch requested line ranges, and refresh the snapshot when files change.
+`Read Code for ChatGPT` 是一个本地 MCP（Model Context Protocol，模型上下文协议）服务。你明确选择一个或多个代码目录，服务为它们建立快照和索引；ChatGPT 再通过一组只读工具发现文件、检索文本与符号、读取所需行范围，并在代码变化后刷新快照。
 
-It is built for the moment when pasting files into chat stops working, but giving a model your whole machine would be a bad idea. ChatGPT can ask better questions about your codebase; the server still owns the boundary.
+它解决的是“把整座仓库逐段粘进聊天窗口”既低效又不安全的问题，而不是把整台电脑交给模型。
 
-![Add read code to ChatGPT](docs/assets/chatgpt-connect-modal.svg)
+![ChatGPT 连接器示意图](docs/assets/chatgpt-connect-modal.svg)
 
-> The SVG（可缩放矢量图）above is a publish-safe homepage visual inspired by the ChatGPT connector dialog. If you want to use the exact screenshot, replace it with `docs/assets/chatgpt-connect-modal.png` and update this image path.
+## 它如何工作
 
-## Why It Exists
-
-ChatGPT can reason across architecture, tasks, tests, and implementation details, but a repository is not a single prompt. This project gives it safe eyes on local code without pretending the whole computer is context:
-
-- list the exact configured repository paths
-- inspect a paginated file map before guessing paths
-- find lightweight symbol definitions
-- search code and docs
-- fetch requested line ranges
-- browse an authorized file tree only when directory layout is requested
-
-The design goal is not "give the model my whole disk". The design goal is: **authorize explicit folders, expose non-destructive tools, mark repository content as untrusted data, and keep repository-boundary safeguards in charge.**
-
-## What ChatGPT Can Read
-
-At startup you choose one or more authorized roots. For a single repository:
-
-```powershell
-node dist/startup.js --port 3100 --repo "<authorized-repo-path>"
+```mermaid
+flowchart LR
+    A["明确授权的本地仓库"] --> B["快照与索引"]
+    B --> C["本地只读 MCP 服务"]
+    C --> D["HTTPS 隧道"]
+    D --> E["ChatGPT 连接器"]
+    F["本机 agent 守护"] -.仅观察与恢复.-> C
+    F -.仅观察与恢复.-> D
 ```
 
-For large repositories, choose the smallest useful project directory: one app, package, service, or module. Avoid binding a whole drive, home directory, network share root, or full monorepo unless the task truly needs that scope.
+系统分成两条互不越权的链路：
 
-For multiple repositories, configure `implementation/server.config.json`:
+- MCP（模型上下文协议）链路只向 ChatGPT 提供仓库读取能力。
+- `agent`（本地守护命令）只在你的机器上维护服务与隧道健康；它不是 MCP 工具，ChatGPT 无法借它启动进程、执行命令或写入文件。
 
-```json
-{
-  "repos": [
-    { "name": "app", "path": "<app-root>" },
-    { "name": "library", "path": "<library-root>" }
-  ]
-}
-```
+## 适合什么场景
 
-### Adding Authorized Folder Paths
+- 让 ChatGPT 先了解代码结构、约定和测试，再协助定位问题或设计改动。
+- 在不暴露整个磁盘的前提下，分析一个应用、服务、包或受控的多仓库集合。
+- 对大型仓库进行可解释检索：知道哪些文件已索引、哪些文件可读但未索引，以及空搜索结果覆盖了什么范围。
+- 在 Windows（视窗系统）或 macOS（苹果系统）登录后，自动恢复本地 MCP 服务和隧道，减少偶发断联。
 
-To add another folder that ChatGPT can read, edit `implementation/server.config.json` and append one item to `repos[]`.
+## ChatGPT 能做什么
 
-Example:
+| 能力 | 工具 | 说明 |
+|---|---|---|
+| 首次引导与多仓库选择 | `read_code`、`api_tool`、`repo_list` | 返回使用指引与已授权仓库；前两个是兼容旧连接器的只读入口。 |
+| 文件发现 | `repo_files` | 返回分页文件图、语言及 `indexed`、`fetchable_unindexed`、`excluded` 状态，不返回文件正文。 |
+| 文本与符号检索 | `repo_search`、`repo_symbols` | 支持文本、符号和混合检索；搜索结果带覆盖信息，符号检索只定位定义。 |
+| 精确阅读 | `repo_fetch` | 读取已发现文件的指定行范围，而不是导出整仓库。 |
+| 目录定位 | `repo_tree` | 仅在需要了解目录布局时返回小范围树状摘要。 |
+| 保持新鲜 | `repo_refresh` | 在仓库发生变化或结果可能过期时建立新快照；刷新失败仍保留旧快照。 |
 
-```json
-{
-  "name": "Obsidian",
-  "path": "E:\\Obsidian",
-  "description": "Local authorized repository: Obsidian"
-}
-```
+推荐给 ChatGPT 的检索顺序：单仓库可直接开始，多仓库先调用 `repo_list`；随后用 `repo_files` 确认路径与可读状态，再用 `repo_symbols` 或 `repo_search` 定位，最后用 `repo_fetch` 读取最小必要行范围。只有用户询问目录布局时才调用 `repo_tree`。文件参数始终是仓库内相对路径；绝对路径只会作为多仓库选择时的 `repo_path` 使用。
 
-Rules:
+## 安全边界
 
-- `path` must be the exact local folder you want to authorize.
-- In JSON, Windows backslashes must be escaped as `\\`, for example `E:\\Obsidian`.
-- Keep existing `repos[]` entries unless you intentionally want to remove access.
-- Prefer the smallest useful project folder. Do not authorize a whole drive, user home directory, or network share root.
-- After changing `server.config.json`, restart the MCP server. `repo_refresh` can refresh only an already authorized repository; it cannot add a new folder to the whitelist.
+- 只读取你显式配置的目录；建议授权最小有用项目目录，不要授权整块磁盘、用户目录或网络共享根目录。
+- 拒绝绝对文件路径、`..`（父级目录）穿越、符号链接逃逸、敏感文件、二进制文件及不安全/不可读目录。
+- 仓库内容始终标记为不可信数据，不能改变服务端的只读边界。
+- 不提供 shell（命令行外壳）、Git（版本控制）、写入、任意文件系统访问或全仓库导出工具。
+- `repo_refresh` 只更新内存中的快照和索引；不会改动你的仓库。
+- 本机守护只重启自己创建的子进程，不会强制结束健康的外部服务；令牌等凭据只能来自操作系统或隧道客户端的私有凭据来源。
 
-Typical restart and verification flow from `implementation`:
+完整说明见 [安全说明](docs/SECURITY.md)。
 
-```powershell
-node dist/startup.js --port 3100
-npm run check:link
-```
+## 五分钟启动
 
-Then ask ChatGPT to call `repo_list`. The new folder should appear with the exact `repo_path` returned by the server. If ChatGPT still sees the old list, re-select or refresh the connector/app metadata, then start a fresh chat if needed.
-
-On first use, ChatGPT can call `read_code` with no arguments or call `repo_list`; both return a compact structured `usage_guide` plus the configured repositories. If only one repository is configured, ChatGPT can call `repo_files`, `repo_search`, `repo_symbols`, `repo_fetch`, `repo_tree`, or `repo_refresh` without `repo_path`. If multiple repositories are configured, ChatGPT must call `repo_list` first, then pass the exact returned `repo_path`. Use `repo_path` only to choose the repository; file paths inside the selected repository remain relative.
-
-Recommended read order for an unfamiliar repository: use `repo_list` when needed, then `repo_files` to inspect exact paths and whether files are fetchable or indexed, then `repo_symbols` or `repo_search`, and finally `repo_fetch` for the smallest useful line range. Use `repo_tree` only when the user asks about directory layout or what is inside a folder:
-
-```text
-List files under src with repo_files.
-Search for createApp.
-Find symbols named createApp.
-Fetch app/main.ts lines 1-80.
-For multiple repositories, call repo_list first and pass repo_path <repo_path-from-repo_list>.
-List app/ only if I ask about the app directory layout.
-```
-
-Do not put an absolute file path into the tool's file `path` argument. The absolute path belongs in `repo_path`; the file path should be `file.ts` or `subdir/file.ts`.
-
-The snapshot admits common source, config, and documentation files. It also admits project text files without standard extensions, such as `Dockerfile`, `Makefile`, `LICENSE`, `.gitignore`, and unknown-extension files that pass a lightweight text check.
-
-The repository view is snapshot-based. Ask ChatGPT to call `repo_refresh` only when files changed after startup or an earlier result may be stale; the server will scan the same authorized root again, build a new snapshot/index, and switch to it only after the refresh succeeds.
-
-Large repositories may have files that are fetchable but not indexed for search. `repo_files` is the source of truth for file discovery inside the active snapshot: it can show `indexed`, `fetchable_unindexed`, and explicitly requested `excluded` entries without returning file contents. Every `repo_search` result includes `coverage`, so an empty result does not claim that a file is absent. For a known fetchable-unindexed area, repeat `repo_search` with a precise `prefix` such as `src`, `tests`, or `tools`, then call `repo_fetch` with the returned relative path. If `repo_fetch` returns `snapshot_stale`, refresh before retrying because the file changed after the active snapshot.
-
-## Tools
-
-| Tool | Purpose |
-|---|---|
-| `read_code` | Backward-compatible wrapper for ChatGPT conversations that expect a `read_code` entry; empty arguments return the usage guide and repository list, while explicit operations route to the read-only `repo_*` tools. |
-| `api_tool` | Backward-compatible wrapper for older ChatGPT connectors that show the tool as `read_code/api_tool`; empty arguments return the usage guide and repository list, while explicit operations route to the read-only `repo_*` tools. |
-| `repo_list` | List configured repository names, exact `repo_path` values, and the same first-use `usage_guide`. |
-| `repo_files` | List a paginated file map with fetch/index/exclusion status, without file contents. |
-| `repo_symbols` | Find lightweight symbol definitions. |
-| `repo_search` | Search indexed text snippets. |
-| `repo_fetch` | Fetch a requested line segment from one file. |
-| `repo_tree` | List a directory tree when directory layout is requested. |
-| `repo_refresh` | Re-scan the authorized root only when the repository changed or the snapshot may be stale. |
-
-All tools are non-destructive for your repository. `repo_refresh` updates only the server's in-memory snapshot/index. There is no shell execution, no write API（应用程序接口）, and no full repository export tool.
-
-Compatibility note: older ChatGPT conversations may refer to the connector entry as `read_code` or `read_code/api_tool`. In this server, those entries are exposed as `read_code` and `api_tool`; both internally route to the same read-only `repo_list`, `repo_files`, `repo_search`, `repo_fetch`, `repo_tree`, `repo_symbols`, and `repo_refresh` operations. Calling either wrapper with no arguments is intentionally equivalent to a guided `repo_list` start.
-
-## Safety Model
-
-- absolute paths are rejected
-- `..` traversal is rejected
-- sensitive paths such as `.git`, `.env`, private keys, and credential files are rejected
-- binary files, oversized files, and sensitive files are excluded
-- system/unreadable directories are skipped and recorded
-- single-response size, single-fetch line window, grant byte budget, tree depth, result-count, and shared throttle ceilings are disabled by default; session bytes, grant bytes, and tool calls are still tracked for diagnostics
-- returned repository content is marked `content_origin=repository_snapshot` and `instruction_trust=untrusted`
-- ChatGPT can use the single configured repository automatically, but arbitrary paths are still rejected; in multi-repository mode it must choose a configured `repo_path`
-
-More detail: [docs/SECURITY.md](docs/SECURITY.md).
-
-## Quick Start
+前提：Node.js（节点运行时）18 或更高版本，以及 npm（Node 包管理器）。以下命令在 Windows、macOS 和 Linux（Linux 系统）上均可使用；直接调用 Node（节点运行时）也避免了 Windows UNC（网络共享）路径下 `npm run` 的当前目录问题。
 
 ```powershell
 git clone https://github.com/wangduoyu414-cell/Read-code-for-ChatGPT.git
-cd Read-code-for-ChatGPT
-cd implementation
+cd Read-code-for-ChatGPT/implementation
 npm install
-npm run build
-npm test
-node dist/startup.js --port 3100 --repo "<authorized-repo-path>"
+node ./node_modules/typescript/bin/tsc
+node ./dist/startup.js --port 3100 --repo "<authorized-repo-path>"
 ```
 
-Local endpoint:
+本地 MCP（模型上下文协议）端点为：
 
 ```text
 http://127.0.0.1:3100/mcp
 ```
 
-For ChatGPT web（网页端）, expose that local endpoint through Secure MCP Tunnel（安全 MCP 隧道）or another HTTPS（安全超文本传输协议）route. The ChatGPT page cannot directly reach `127.0.0.1` on your machine.
-
-Full setup guide: [CONNECT_CHATGPT.md](CONNECT_CHATGPT.md).
-
-## Optional Local Autostart / Keepalive
-
-For a Windows（视窗系统）or macOS（苹果系统） machine that should recover the local MCP（模型上下文协议）service and tunnel after login, configure the local-only supervisor from `implementation`. It writes only to your user home directory and manages only the child processes it starts:
+在第二个终端运行本地链路自检：
 
 ```powershell
-$implementationRoot = (Resolve-Path .\implementation).Path
+cd Read-code-for-ChatGPT/implementation
+node ./scripts/check-read-code-link.mjs
+```
+
+正常本地路径也可以使用 `npm run build`、`npm test` 和 `npm run check:link`。若项目位于 Windows UNC（网络共享）路径，请优先使用上面的直接 Node（节点运行时）命令。
+
+### 配置一个或多个仓库
+
+单仓库可直接使用启动参数 `--repo "<authorized-repo-path>"`。需要长期维护多个仓库时，在 `implementation/server.config.json` 配置 `repos`；此文件通常含本机路径，应保持本地，不要提交：
+
+```json
+{
+  "repos": [
+    { "name": "app", "path": "<app-root>", "description": "主应用" },
+    { "name": "library", "path": "<library-root>", "description": "共享库" }
+  ]
+}
+```
+
+Windows（视窗系统）路径在 JSON（数据格式）中需要使用 `\\`，例如 `E:\\Projects\\app`。修改授权目录后重启服务；`repo_refresh` 只能刷新已授权仓库，不能扩大白名单。
+
+## 接入 ChatGPT
+
+ChatGPT 网页端无法直接访问你电脑的 `127.0.0.1`。请将本地 `/mcp` 端点通过 Secure MCP Tunnel（安全 MCP 隧道）或其他 HTTPS（安全超文本传输协议）方案公开为受控地址，然后在 ChatGPT Developer mode（开发者模式）创建连接器。
+
+| 连接器字段 | 开发环境填写值 |
+|---|---|
+| 名称 | `Read Code` |
+| 描述 | `Read authorized local repositories through a snapshot-based, read-only MCP bridge.` |
+| MCP 服务器 | 隧道提供的 HTTPS `/mcp` 地址 |
+| 认证 | 本地开发使用 `No Authentication`（无认证） |
+
+当前项目处于 `dev_local`（本地开发）模式：生产 OAuth 2.1/OIDC（开放授权二点一/开放身份连接）、多用户访问策略和托管部署加固尚未实现。完整接入步骤、链路自检和故障排查见 [CONNECT_CHATGPT.md](CONNECT_CHATGPT.md)。
+
+## 登录后自启动与保活
+
+如果服务或隧道会在登录后、休眠后或网络波动后断联，可安装用户级 `agent`（本地守护命令）：
+
+- Windows（视窗系统）优先使用任务计划；系统策略拒绝时自动回退到当前用户启动文件夹。异常退出后等待 5 秒重启，正常停止不重启。
+- macOS（苹果系统）使用 LaunchAgent（启动代理）的 `RunAtLoad`（登录启动）和 `KeepAlive`（保持运行）。
+- 守护每 30 秒检查 MCP（模型上下文协议）和隧道健康；连续失败退避最高 60 秒，连续两个健康轮询后才重置。
+
+从 `implementation` 目录配置 Windows（视窗系统）守护示例：
+
+```powershell
+$implementationRoot = (Resolve-Path .).Path
 $agentEntry = Join-Path $implementationRoot "dist\agent.js"
-node (Join-Path $implementationRoot "node_modules\typescript\bin\tsc")
 node $agentEntry configure --working-directory $implementationRoot --tunnel-command "<tunnel-client-path>" --tunnel-args-json '["run","--profile-file","<profile-file>"]' --tunnel-env-json '{"TUNNEL_TOKEN":"READ_CODE_TUNNEL_TOKEN"}'
 node $agentEntry doctor
 node $agentEntry install
 ```
 
-The absolute Node（节点运行时）entry works from a Windows UNC（网络共享）path; do not rely on `npm run agent` there. Keep token values in an operating-system or tunnel-client credential source: the mapping above stores only variable names, and the agent rejects inline token/key/password arguments. It never becomes a ChatGPT tool and never force-stops an external process that happens to own the same port. See [agent-supervisor.md](implementation/docs/agent-supervisor.md).
+上述环境映射只保存变量名称，不保存令牌值；`agent` 会拒绝 `--token`、`--api-key`、密码和同类内联凭据。Windows UNC（网络共享）目录请始终使用绝对 `agent.js` 入口，不要依赖 `npm run agent`。完整命令、macOS（苹果系统）步骤和状态含义见 [本地自启动与保活](implementation/docs/agent-supervisor.md)。
 
-## ChatGPT App / Connector Setup
+## 常用验证与排查
 
-In ChatGPT Developer mode（开发者模式）, create an MCP app/connector（连接器）with:
-
-| Field | Value |
+| 现象 | 先做什么 |
 |---|---|
-| Name | `Read Code` |
-| Description | `Let ChatGPT read authorized local repositories through a read-only MCP file map, search, symbol, fetch, and refresh bridge.` |
-| MCP server | Your HTTPS `/mcp` URL or Secure MCP Tunnel profile |
-| Authentication | `No Authentication` for local dev; production needs OAuth 2.1/OIDC |
+| ChatGPT 找不到仓库或工具 | 本地运行链路自检；随后在 ChatGPT 重新选择 `Read Code`，必要时刷新或重建连接器。 |
+| 多仓库时调用失败 | 先调用 `repo_list`，并使用返回的精确 `repo_path`。 |
+| 搜索为空但文件应存在 | 查看 `repo_search` 返回的 `coverage`；用 `repo_files` 缩小 `prefix`，再搜索或读取 `fetchable_unindexed` 文件。 |
+| `repo_fetch` 返回 `snapshot_stale` | 对选定仓库调用 `repo_refresh`，再搜索或读取。 |
+| 服务或隧道偶发断联 | 运行 `agent doctor`；确认凭据来源存在后安装或重启用户级 `agent`。 |
+| 端口 `3100` 被占用 | 使用 `--port 3101` 启动，并同步修改隧道目标。 |
 
-If your ChatGPT UI requires OAuth（开放授权）, this project is not in production-auth mode yet. Use no-auth local development, or implement production OAuth before exposing private repositories.
+## 文档导航
 
-## Local Link Check
+| 文档 | 用途 |
+|---|---|
+| [接入手册](CONNECT_CHATGPT.md) | 安装、授权目录、连接器配置、链路自检与常见问题。 |
+| [本地自启动与保活](implementation/docs/agent-supervisor.md) | 跨 Windows/macOS 的守护、凭据边界、状态诊断和卸载。 |
+| [安全说明](docs/SECURITY.md) | 授权范围、发布卫生和私有代码使用边界。 |
+| [文档索引](docs/README.md) | 设计、报告、发布和实现文档的责任边界。 |
+| [仓库资料文案](docs/GITHUB_REPO_PROFILE.md) | GitHub About（简介）、主题标签与连接器描述的统一来源。 |
 
-After the server is running, verify the local chain from `<implementation-root>`:
+## 项目状态
 
-```powershell
-npm run check:link
-```
+已实现：Streamable HTTP MCP（可流式 HTTP 模型上下文协议）服务、只读工具注册、多个授权仓库、快照一致性、文件图、文本/符号/混合检索、按需前缀补扫、精确行读取、刷新回退、首调用引导、用户级本机保活和连接器发现端点。
 
-This checks local discovery, MCP tool registration, the first-use `read_code` guide, `repo_list`, `repo_files`, `repo_fetch`, a small `repo_tree` read, and the optional local tunnel admin endpoint. It proves the local MCP chain is reachable; it does not prove the current ChatGPT chat selected the connector.
+当前不提供：生产 OAuth 2.1/OIDC（开放授权二点一/开放身份连接）、多用户访问控制、托管部署、引用/调用图、向量数据库、文件监听、shell（命令行外壳）、Git（版本控制）、写入工具或整仓库导出。
 
-If an older connector/app was created before tool names were normalized, refresh or recreate that connector so ChatGPT imports `repo_list`, `repo_search`, `repo_files`, `repo_fetch`, `repo_tree`, `repo_symbols`, and `repo_refresh`. Starting a new chat alone may keep using cached connector metadata.
-
-Full options, expected output, and Windows UNC（网络共享）workarounds: [CONNECT_CHATGPT.md#8-local-link-check本地链路自检](CONNECT_CHATGPT.md#8-local-link-check本地链路自检).
-
-## Project Layout
-
-```text
-.
-├─ CONNECT_CHATGPT.md
-├─ README.md
-├─ tool-schemas.json
-├─ docs/
-│  ├─ SECURITY.md
-│  ├─ REFERENCES.md
-│  └─ GITHUB_PUBLISH_CHECKLIST.md
-├─ execution-cards/
-└─ implementation/
-   ├─ src/
-   ├─ tests/
-   ├─ fixtures/
-   └─ package.json
-```
-
-## References
-
-- OpenAI Apps SDK（应用开发包）: https://developers.openai.com/apps-sdk/
-- Connect from ChatGPT（从 ChatGPT 连接）: https://developers.openai.com/apps-sdk/deploy/connect-chatgpt
-- ChatGPT Developer mode（开发者模式）: https://developers.openai.com/api/docs/guides/developer-mode
-- Secure MCP tunnels（安全 MCP 隧道）: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
-- MCP in Apps SDK（模型上下文协议）: https://developers.openai.com/apps-sdk/concepts/mcp-server
-- Apps SDK security and privacy（安全与隐私）: https://developers.openai.com/apps-sdk/guides/security-privacy
-- MCP tools specification（工具规范）: https://modelcontextprotocol.io/specification/2025-06-18/server/tools
-
-## Status
-
-Current mode: `dev_local`.
-
-Implemented:
-
-- Streamable HTTP MCP server
-- read-only tool registry
-- repository snapshot manifest
-- multi-repository `repo_path` selection through `repo_list`
-- paginated `repo_files` file map with fetch/index/exclusion status
-- source-priority snapshot scanning for common code-review directories
-- text and symbol indexing
-- explainable `text` / `symbol` / `hybrid` search coverage, with optional bounded prefix scans for fetchable-unindexed files
-- snapshot-consistent fetches that require refresh after a file changes or escapes through a link
-- first-call `usage_guide` returned by `read_code` and `repo_list`
-- on-demand snapshot refresh with old-snapshot fallback on failure
-- user-login local MCP/tunnel supervisor for Windows and macOS; it is not exposed to ChatGPT as a tool
-- path guard, redaction, budgets, and audit ids
-- ChatGPT connector discovery endpoints
-- ChatGPT-compatible underscore tool names, with legacy dotted names accepted only as server-side aliases
-
-Not production-ready yet:
-
-- production OAuth 2.1/OIDC
-- multi-user access policy
-- hosted deployment hardening
-
-## Publication Note
-
-This repository intentionally ignores local review receipts, tunnel client files, build outputs, `node_modules`, and `.env` files. Before publishing, run [docs/GITHUB_PUBLISH_CHECKLIST.md](docs/GITHUB_PUBLISH_CHECKLIST.md).
+发布前请执行 [GitHub 发布检查清单](docs/GITHUB_PUBLISH_CHECKLIST.md)，并确保本机路径、隧道客户端、构建输出、`node_modules`、`.env` 与所有真实凭据均不进入仓库。

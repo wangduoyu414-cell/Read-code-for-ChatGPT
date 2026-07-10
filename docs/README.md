@@ -9,6 +9,7 @@ This directory keeps project documents grouped by responsibility. Public setup d
 - `SECURITY.md`: security notes（安全说明）
 - `REFERENCES.md`: official references（官方参考）
 - `GITHUB_PUBLISH_CHECKLIST.md`: publish checklist（发布检查清单）
+- `GITHUB_REPO_PROFILE.md`: repository About（简介）、主题标签和连接器文案的统一来源
 
 ## Design（设计权威）
 
