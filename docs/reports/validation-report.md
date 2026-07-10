@@ -2,14 +2,14 @@
 
 ## EXEC-019 Supervisor Reliability And Secret Boundaries（守护可靠性与凭据边界）
 
-状态：`implementation_complete_exec019_published_pr_open`（本地实现、文档、验证、可审查分支发布和草稿 PR（拉取请求）创建完成）。
+状态：`implementation_complete_exec019_published_main`（本地实现、文档、验证和主分支发布完成）。
 
 - 目标：修复 Windows UNC（网络共享）下 npm（Node 包管理器）守护入口失效、启动文件夹回退不自恢复、连续失败退避重置、状态所有权误报和内联凭据落盘风险。
 - 范围：仅本地 `agent`（守护命令）、其用户级启动项、测试和运行文档；MCP（模型上下文协议）工具继续只读且不具进程管理能力。
 - 结果：Windows UNC（网络共享）使用绝对 Node（节点运行时）守护入口；启动文件夹回退在异常退出后重启、正常退出停止；连续失败退避跨子进程重启保留并在两个健康轮询后清零；`status`（状态）恢复有效受管所有权；内联凭据被拒绝，隧道环境映射只保存变量名称。
 - 验证：类型检查、构建、全量测试（234 通过、0 失败、1 项 Windows（视窗系统）平台跳过）、绝对入口 `doctor`（诊断）/`status`（状态）/`install`（安装）、内联令牌拒绝、链路自检、20 张执行卡校验和差异检查通过。
 - 卫生：本卡候选路径敏感扫描通过；通用仓库卫生校验器同时在 HEAD（当前提交）基线和候选的 `implementation/tests/foundation-guards.test.ts`（安全扫描测试夹具）报出疑似机密，属于已记录的基线误报，未由本卡引入。
-- 发布：可审查分支 `codex/supervisor-reliability-secret-boundaries` 已推送到 `origin`（远端仓库），草稿 PR（拉取请求）[#1](https://github.com/wangduoyu414-cell/Read-code-for-ChatGPT/pull/1) 已创建。GitHub CLI（命令行工具）令牌仍需重新登录；该令牌问题不影响已完成的 Git（版本控制）推送和 PR（拉取请求）创建。
+- 发布：当前提交已直接推送到 `main`（主分支）。草稿 PR（拉取请求）[#1](https://github.com/wangduoyu414-cell/Read-code-for-ChatGPT/pull/1) 保留为审查记录。GitHub CLI（命令行工具）令牌仍需重新登录；该令牌问题不影响已完成的 Git（版本控制）推送和 PR（拉取请求）创建。
 
 ## EXEC-018 Retrieval Coverage And Local Supervisor Closure（检索覆盖与本地守护闭环）
 
