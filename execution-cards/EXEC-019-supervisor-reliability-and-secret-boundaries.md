@@ -1,13 +1,13 @@
 ---
 task_contract_version: 2
 id: EXEC-019
-status: implementation_complete_publish_pending
+status: implementation_complete_published_pr_open
 external_review_policy: optional
 ---
 
 # EXEC-019：本地守护可靠性、凭据边界与跨 UNC 运维入口
 
-状态：implementation_complete_publish_pending（本地实现与验证完成，等待远端发布凭据）。
+状态：implementation_complete_published_pr_open（本地实现、验证、可审查分支发布和草稿 PR（拉取请求）创建完成）。
 依赖：EXEC-018 complete（完成）；用户已授权修复已复核的问题并发布到远端。
 
 ## 1. Objective
@@ -156,11 +156,11 @@ protected files unchanged:
 - MCP（模型上下文协议）工具注册表不新增写入、shell（命令行外壳）或进程管理能力；真实密钥、隧道令牌和用户路径不进入仓库。
 
 remaining blockers:
-- 远端发布前需要有效 GitHub（代码托管平台）登录状态；本地实现、文档和验证已完成。
+- 草稿 PR（拉取请求）[#1](https://github.com/wangduoyu414-cell/Read-code-for-ChatGPT/pull/1) 已从 `codex/supervisor-reliability-secret-boundaries` 打开至 `main`（主分支）；GitHub CLI（命令行工具）令牌仍无效，但不影响已完成的 Git（版本控制）推送和 PR（拉取请求）创建。
 - 通用仓库卫生校验器在 HEAD（当前提交）基线和候选中均把 `implementation/tests/foundation-guards.test.ts`（测试夹具）报为疑似机密；本卡候选路径敏感扫描通过，该基线误报不在本卡允许改动范围内。
 
 completion status:
-- implementation_complete_publish_pending（本地实现完成，等待远端发布）。
+- implementation_complete_published_pr_open（本地实现、验证、远端分支发布和草稿 PR（拉取请求）创建完成）。
 
 documentation impact:
 - required（需要）：运行入口、启动回退、凭据边界与状态语义均是用户可见运维合同。

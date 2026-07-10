@@ -1,6 +1,6 @@
 # CHATGPT-LOCAL-REPO-001 Execution Cards（执行任务卡索引）
 
-状态：implementation_complete_exec019_publish_pending（基础链路、首次调用导览、可解释检索和用户级本地保活及其可靠性、凭据边界和 UNC 运维入口修复均已完成；等待远端发布凭据）。
+状态：implementation_complete_exec019_published_pr_open（基础链路、首次调用导览、可解释检索和用户级本地保活及其可靠性、凭据边界和 UNC 运维入口修复均已完成；可审查分支已发布，草稿 PR（拉取请求）[#1](https://github.com/wangduoyu414-cell/Read-code-for-ChatGPT/pull/1) 已创建）。
 
 本目录把 `docs/design/task-card.md` 的设计拆成可执行任务卡。执行前必须先确认执行根目录：
 
