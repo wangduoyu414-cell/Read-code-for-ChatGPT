@@ -100,6 +100,7 @@ await describe("Tool Annotations", async () => {
     await it(`${tool.name} is non-destructive`, () => assert.equal(tool.annotations?.destructiveHint, false));
     await it(`${tool.name} does not access external world`, () => assert.equal(tool.annotations?.openWorldHint, false));
     await it(`${tool.name} has Zod inputSchema`, () => assert.ok(tool.inputSchema));
+    await it(`${tool.name} has Zod outputSchema`, () => assert.ok(tool.outputSchema));
     await it(`${tool.name} exposes model-visible ChatGPT metadata`, () => {
       assert.deepEqual((tool._meta.ui as { visibility?: unknown }).visibility, ["model", "app"]);
       assert.equal(tool._meta["openai/visibility"], "public");
@@ -325,6 +326,7 @@ await describe("MCP response size behavior", async () => {
       assert.equal(toolsByName.has("api_tool"), true);
       assert.equal(tools.tools.some((tool) => tool.name.includes(".")), false);
       for (const tool of tools.tools) {
+        assert.equal((tool.outputSchema as { type?: unknown } | undefined)?.type, "object");
         assert.deepEqual((tool._meta?.ui as { visibility?: unknown } | undefined)?.visibility, ["model", "app"]);
         assert.equal(tool._meta?.["openai/visibility"], "public");
         assert.equal(typeof tool._meta?.["openai/toolInvocation/invoking"], "string");

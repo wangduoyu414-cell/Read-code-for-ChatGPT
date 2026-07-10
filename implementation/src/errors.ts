@@ -8,6 +8,7 @@ export const ERROR_CODES = [
   "auth_failed",
   "scope_denied",
   "snapshot_not_ready",
+  "snapshot_stale",
   "access_denied",
   "secret_detected",
   "result_too_large",

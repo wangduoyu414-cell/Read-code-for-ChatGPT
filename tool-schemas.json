@@ -1,5 +1,5 @@
 {
-  "schema_version": "2026-07-01-design-v9",
+  "schema_version": "2026-07-10-design-v10",
   "tools": [
     {
       "name": "read_code",
@@ -398,7 +398,7 @@
     {
       "name": "repo_search",
       "title": "Repository Search",
-      "description": "Search indexed text, config, docs, and error strings within an authorized immutable repository snapshot. Use repo_files first when paths are unclear or a large repository may contain fetchable files that are not indexed. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo_list.",
+      "description": "Search an authorized immutable repository snapshot. mode=text searches indexed text, mode=symbol searches definitions, and mode=hybrid combines both. Every response states indexed and fetchable-unindexed coverage; use a precise prefix only to scan fetchable unindexed manifest files. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo_list.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -449,6 +449,10 @@
             ],
             "default": "text"
           },
+          "prefix": {
+            "type": "string",
+            "maxLength": 512
+          },
           "limit": {
             "type": "integer",
             "minimum": 1,
@@ -464,6 +468,8 @@
           "snapshot_id",
           "policy_version",
           "hits",
+          "mode",
+          "coverage",
           "content_origin",
           "instruction_trust",
           "audit_id",
@@ -488,6 +494,13 @@
             "items": {
               "$ref": "#/$defs/search_hit"
             }
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["text", "symbol", "hybrid"]
+          },
+          "coverage": {
+            "$ref": "#/$defs/search_coverage"
           },
           "truncated": {
             "type": "boolean"
@@ -713,7 +726,7 @@
     {
       "name": "repo_fetch",
       "title": "Repository Fetch Segment",
-      "description": "Fetch the requested line segment from a known file path. Use this after repo_files, repo_search, repo_symbols, or a targeted repo_tree identifies the file. Rejects absolute paths, parent-directory traversal, symlink escapes, and sensitive files. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo_list.",
+      "description": "Fetch the requested line segment from a known file path. Use this after repo_files, repo_search, repo_symbols, or a targeted repo_tree identifies the file. Rejects absolute paths, parent-directory traversal, symlink escapes, sensitive files, and files changed after the active snapshot; refresh before retrying a stale file. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo_list.",
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
@@ -1474,7 +1487,46 @@
         },
         "truncated": {
           "type": "boolean"
+        },
+        "source": {
+          "type": "string",
+          "enum": ["text", "symbol", "on_demand"]
         }
+      }
+    },
+    "search_coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index_status",
+        "manifest_files_total",
+        "fetchable_files_total",
+        "indexed_files_total",
+        "fetchable_unindexed_files_total",
+        "index_exclusion_reasons",
+        "on_demand_prefix_scan",
+        "search_miss_note"
+      ],
+      "properties": {
+        "index_status": { "type": "string", "enum": ["complete", "partial", "partial_with_on_demand_prefix_scan"] },
+        "manifest_files_total": { "type": "integer", "minimum": 0 },
+        "fetchable_files_total": { "type": "integer", "minimum": 0 },
+        "indexed_files_total": { "type": "integer", "minimum": 0 },
+        "fetchable_unindexed_files_total": { "type": "integer", "minimum": 0 },
+        "index_exclusion_reasons": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "on_demand_prefix_scan": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requested", "prefix", "scanned_files", "matching_files", "limited"],
+          "properties": {
+            "requested": { "type": "boolean" },
+            "prefix": { "type": ["string", "null"] },
+            "scanned_files": { "type": "integer", "minimum": 0 },
+            "matching_files": { "type": "integer", "minimum": 0 },
+            "limited": { "type": "boolean" }
+          }
+        },
+        "search_miss_note": { "type": "string" }
       }
     },
     "file_map_counts": {

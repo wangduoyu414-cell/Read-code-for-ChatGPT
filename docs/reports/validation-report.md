@@ -1,5 +1,27 @@
 # Validation Report（校验报告）
 
+## EXEC-019 Supervisor Reliability And Secret Boundaries（守护可靠性与凭据边界）
+
+状态：`implementation_complete_exec019_publish_pending`（本地实现、文档和验证完成，等待远端发布凭据）。
+
+- 目标：修复 Windows UNC（网络共享）下 npm（Node 包管理器）守护入口失效、启动文件夹回退不自恢复、连续失败退避重置、状态所有权误报和内联凭据落盘风险。
+- 范围：仅本地 `agent`（守护命令）、其用户级启动项、测试和运行文档；MCP（模型上下文协议）工具继续只读且不具进程管理能力。
+- 结果：Windows UNC（网络共享）使用绝对 Node（节点运行时）守护入口；启动文件夹回退在异常退出后重启、正常退出停止；连续失败退避跨子进程重启保留并在两个健康轮询后清零；`status`（状态）恢复有效受管所有权；内联凭据被拒绝，隧道环境映射只保存变量名称。
+- 验证：类型检查、构建、全量测试（234 通过、0 失败、1 项 Windows（视窗系统）平台跳过）、绝对入口 `doctor`（诊断）/`status`（状态）/`install`（安装）、内联令牌拒绝、链路自检、20 张执行卡校验和差异检查通过。
+- 卫生：本卡候选路径敏感扫描通过；通用仓库卫生校验器同时在 HEAD（当前提交）基线和候选的 `implementation/tests/foundation-guards.test.ts`（安全扫描测试夹具）报出疑似机密，属于已记录的基线误报，未由本卡引入。
+- 发布：远端 GitHub（代码托管平台）凭据目前需要重新登录；本地收口完成后再推送可审查分支。
+
+## EXEC-018 Retrieval Coverage And Local Supervisor Closure（检索覆盖与本地守护闭环）
+
+状态：`implementation_complete_exec018_search_coverage_and_local_supervisor`（实现完成）。
+
+- 检索：全文索引只吸收核心目录优先的 `index_admitted`（允许索引）文件；`.pytest_tmp`（测试临时目录）等运行产物保留在 manifest（清单）中以便发现/读取，但默认不消耗全文索引额度。`repo_search`（仓库搜索）实际区分 `text`、`symbol`、`hybrid`，并返回 `coverage`（覆盖）和限定前缀的按需扫描状态。`repo_symbols language=python` 与 `language=py` 一致。
+- 一致性：`repo_fetch`（读取）和索引器共用受控快照读取边界；文件内容哈希改变、符号链接或授权根逃逸会返回可重试的 `snapshot_stale`（快照过期），要求 `repo_refresh`（刷新）。
+- 保活：新增本地 `agent`（守护命令），不注册为 MCP（模型上下文协议）工具。Windows（视窗系统）优先任务计划，系统策略拒绝时自动回退到当前用户启动文件夹；macOS（苹果系统）渲染 `RunAtLoad` + `KeepAlive` 的 LaunchAgent（启动代理）。守护只停止自身启动的子进程；当前机器把现有 MCP 和隧道判定为 `healthy_external`（健康外部）并只观察。
+- 本机运行证据：新版 MCP 已对 6 个已授权仓库完成快照/索引并在 `127.0.0.1:3100` 监听；隧道 `/healthz`=`live`、`/readyz`=`ready`；本地 `agent run` 与 `agent status` 成功。
+- 验证：任务卡校验 `cards=19`、类型检查、全量测试（230 通过、0 失败、1 个 Windows 平台跳过）、构建、MCP link check（链路自检）、真实三种搜索模式探针、敏感扫描和 `git diff --check` 全部通过。
+- 文档影响：已同步根接入说明、MCP 契约、本地守护操作说明及 EXEC-018 执行卡；未新增顶层临时目录或提交用户目录配置/日志。
+
 状态：implementation_complete_with_exec013_doc_preconnect（实现已完成，并补充 EXEC-013 文档归类与接入前链路复验）。
 
 跨电脑说明：本报告保留历史验证摘要。历史 `.claude-review`（Claude 复核）回执和 validator（校验器）结果中的绝对路径属于当时运行证据，不是新接入人员要复制的路径；新接入说明以根目录 `CONNECT_CHATGPT.md` 和 `<repo-root>`（仓库根目录）占位符为准。

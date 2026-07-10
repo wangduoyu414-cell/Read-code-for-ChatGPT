@@ -3,8 +3,6 @@
  * Each tool receives the shared BudgetState from the runtime for cumulative enforcement.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { CONFIG } from "../config.js";
 import { toolError, type ToolError } from "../errors.js";
 import { generateAuditId } from "../audit/audit-id.js";
@@ -12,11 +10,12 @@ import { validateFilePath } from "../security/path-guard.js";
 import { checkResponseBytes, checkSessionBudget, checkGrantBudget, checkCallCount, checkThrottle, checkTreeDepth, checkSearchHitLimit, checkSymbolHitLimit, checkLineWindow, type BudgetState } from "../security/budget.js";
 import { sanitizeContent, wrapRepositoryContent } from "../security/redaction.js";
 import { scanForSecrets } from "../security/secret-scanner.js";
-import { searchText } from "../indexer/text-index.js";
+import { scanManifestPrefix, searchText, type TextHit } from "../indexer/text-index.js";
 import { searchSymbols } from "../indexer/symbol-index.js";
 import { indexSkipReason, isPathIndexed } from "../indexer/index-status.js";
 import type { ManifestFile, SnapshotManifest } from "../snapshot/manifest.js";
 import { rejectIfNotReady } from "../snapshot/snapshot-registry.js";
+import { readSnapshotFile } from "../snapshot/snapshot-file.js";
 
 function makeCtx(repo_id: string, snapshot_id: string) {
   return { repo_id, snapshot_id, audit_id: generateAuditId() };
@@ -163,9 +162,9 @@ function excludedFileMapItem(file: { relative_path: string; reason: string }): F
 // ─── repo_search ─────────────────────────────────────────────────────────────
 
 export async function repoSearcher(
-  args: { repo_id: string; repo_path: string; snapshot_id: string; query: string; mode?: string; limit?: number },
-  _manifest: SnapshotManifest,
-  _rootDir: string,
+  args: { repo_id: string; repo_path: string; snapshot_id: string; query: string; mode?: "text" | "symbol" | "hybrid"; prefix?: string; limit?: number },
+  manifest: SnapshotManifest,
+  rootDir: string,
   budget: BudgetState,
 ) {
   const ctx = makeCtx(args.repo_id, args.snapshot_id);
@@ -180,7 +179,25 @@ export async function repoSearcher(
   if (!cc.allowed) return cc.error!;
 
   const limit = applyOptionalMax(args.limit ?? CONFIG.tools.search.defaultLimit, CONFIG.tools.search.maxLimit);
-  const hits = searchText(ctx.snapshot_id, args.query, limit);
+  const mode = args.mode ?? "text";
+  const prefix = normalizeOptionalPrefix(args.prefix, ctx.repo_id, ctx.snapshot_id, ctx.audit_id);
+  if (typeof prefix !== "string" && prefix !== undefined) return prefix;
+
+  const textHits = mode === "symbol" ? [] : searchText(ctx.snapshot_id, args.query, limit);
+  const symbolHits = mode === "text"
+    ? []
+    : searchSymbols(ctx.snapshot_id, args.query, undefined, limit).map((symbol) => symbolToSearchHit(symbol, ctx.snapshot_id, args.query));
+
+  const unindexedManifest = {
+    ...manifest,
+    files: manifest.files.filter((file) => file.fetchable && !isPathIndexed(ctx.snapshot_id, file.relative_path)),
+  };
+  const onDemand = prefix !== undefined && mode !== "symbol"
+    ? scanManifestPrefix(unindexedManifest, rootDir, prefix, args.query, limit, CONFIG.tools.search.onDemandPrefixMaxFiles)
+    : { hits: [] as TextHit[], scanned_files: 0, matching_files: 0, limited: false };
+  const hits = [...textHits, ...symbolHits, ...onDemand.hits]
+    .sort((left, right) => right.score - left.score || left.path.localeCompare(right.path) || left.line_range.start - right.line_range.start)
+    .slice(0, limit);
 
   const hitCheck = checkSearchHitLimit(hits.length, ctx.repo_id, ctx.snapshot_id, ctx.audit_id);
   if (!hitCheck.allowed) return hitCheck.error!;
@@ -189,11 +206,13 @@ export async function repoSearcher(
   const response = wrapRepositoryContent({
     repo_path: args.repo_path,
     snapshot_id: ctx.snapshot_id,
+    mode,
     hits: hits.map((h) => {
       const sanitized = sanitizeContent(h.snippet, CONFIG.budget.singleResponseMaxBytes);
       return { ...h, snippet: sanitized.redacted };
     }),
-    truncated,
+    truncated: truncated || onDemand.limited,
+    coverage: searchCoverage(manifest, ctx.snapshot_id, prefix, onDemand),
   }, ctx.audit_id);
 
   // Budget: response bytes (session + grant cumulative)
@@ -206,6 +225,61 @@ export async function repoSearcher(
   if (!gb.allowed) return gb.error!;
 
   return response;
+}
+
+function symbolToSearchHit(
+  symbol: ReturnType<typeof searchSymbols>[number],
+  snapshotId: string,
+  query: string,
+): TextHit {
+  const exact = symbol.name.toLowerCase() === query.toLowerCase();
+  return {
+    path: symbol.path,
+    line_range: { start: symbol.line, end: symbol.line },
+    snippet: symbol.signature ? `${symbol.kind} ${symbol.name}(${symbol.signature})` : `${symbol.kind} ${symbol.name}`,
+    score: (exact ? 6 : 5) + symbol.confidence,
+    symbol: symbol.name,
+    snapshot_id: snapshotId,
+    truncated: false,
+    source: "symbol",
+  };
+}
+
+function searchCoverage(
+  manifest: SnapshotManifest,
+  snapshotId: string,
+  prefix: string | undefined,
+  onDemand: { scanned_files: number; matching_files: number; limited: boolean },
+): Record<string, unknown> {
+  const fetchable = manifest.files.filter((file) => file.fetchable);
+  const indexed = fetchable.filter((file) => isPathIndexed(snapshotId, file.relative_path));
+  const fetchableUnindexed = fetchable.length - indexed.length;
+  return {
+    index_status: fetchableUnindexed === 0 ? "complete" : prefix === undefined ? "partial" : "partial_with_on_demand_prefix_scan",
+    manifest_files_total: manifest.files.length,
+    fetchable_files_total: fetchable.length,
+    indexed_files_total: indexed.length,
+    fetchable_unindexed_files_total: fetchableUnindexed,
+    index_exclusion_reasons: countUnindexedReasons(manifest, snapshotId),
+    on_demand_prefix_scan: {
+      requested: prefix !== undefined,
+      prefix: prefix ?? null,
+      scanned_files: onDemand.scanned_files,
+      matching_files: onDemand.matching_files,
+      limited: onDemand.limited,
+    },
+    search_miss_note: "An empty result means this search scope had no match. Use repo_files to distinguish a missing path from a fetchable file outside the index.",
+  };
+}
+
+function countUnindexedReasons(manifest: SnapshotManifest, snapshotId: string): Record<string, number> {
+  const counts = new Map<string, number>();
+  for (const file of manifest.files) {
+    if (!file.fetchable || isPathIndexed(snapshotId, file.relative_path)) continue;
+    const reason = indexSkipReason(snapshotId, file.relative_path) ?? file.index_reject_reason ?? "not_indexed";
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  }
+  return Object.fromEntries(Array.from(counts.entries()).sort((left, right) => left[0].localeCompare(right[0])));
 }
 
 // ─── repo_files ──────────────────────────────────────────────────────────────
@@ -337,11 +411,15 @@ export async function repoFetcher(
   if (!mf.fetchable) return toolError("access_denied", mf.fetch_reject_reason ?? "File is not fetchable.", ctx.repo_id, ctx.snapshot_id, CONFIG.policyVersion, ctx.audit_id);
   if (mf.sensitive_detected) return toolError("secret_detected", "File flagged as sensitive.", ctx.repo_id, ctx.snapshot_id, CONFIG.policyVersion, ctx.audit_id);
 
-  let raw: string;
-  try { raw = readFileSync(join(rootDir, pathCheck.normalized!), "utf-8"); }
-  catch { return toolError("internal_error", "Failed to read file.", ctx.repo_id, ctx.snapshot_id, CONFIG.policyVersion, ctx.audit_id); }
+  const read = readSnapshotFile(rootDir, mf);
+  if (!read.ok) {
+    const message = read.reason === "hash_mismatch"
+      ? "File changed after the active snapshot. Call repo_refresh before reading it."
+      : "File no longer matches the active snapshot or safely resolves inside the authorized root. Call repo_refresh if the repository changed.";
+    return toolError("snapshot_stale", message, ctx.repo_id, ctx.snapshot_id, CONFIG.policyVersion, ctx.audit_id, true);
+  }
 
-  const lines = raw.split("\n");
+  const lines = read.content.split("\n");
   const lineStart = Math.min(args.line_start, lines.length);
   const lineEnd = Math.min(args.line_end, lines.length);
   const content = lines.slice(lineStart - 1, lineEnd).join("\n");

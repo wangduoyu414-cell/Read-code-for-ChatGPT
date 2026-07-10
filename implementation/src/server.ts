@@ -114,6 +114,7 @@ function createMcpServer(): McpServer {
         title: reg.title,
         description: reg.description,
         inputSchema: reg.inputSchema,
+        outputSchema: reg.outputSchema,
         annotations: reg.annotations,
         _meta: reg._meta,
       },

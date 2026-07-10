@@ -13,6 +13,7 @@ import type { SnapshotManifest } from "../snapshot/manifest.js";
 import { buildTextIndex, clearTextIndex } from "./text-index.js";
 import { buildSymbolIndex, clearSymbolIndex } from "./symbol-index.js";
 import { clearIndexStatus, setIndexStatus } from "./index-status.js";
+import { sortIndexCandidates } from "./index-policy.js";
 
 const INDEX_TIMEOUT_MS = 30_000;
 const MAX_INDEXED_FILES = 10_000;
@@ -43,7 +44,7 @@ export function runIndexer(manifest: SnapshotManifest, rootDir: string, options:
   }
 
   // Count admitted files (do NOT mutate the manifest — GAP-010 fix)
-  const admitted = manifest.files.filter((f) => f.index_admitted);
+  const admitted = sortIndexCandidates(manifest.files.filter((f) => f.index_admitted));
   const maxIndexedFiles = options.maxIndexedFiles ?? MAX_INDEXED_FILES;
   const toIndex = admitted.slice(0, maxIndexedFiles);
   const skippedByLimit = admitted.slice(maxIndexedFiles);

@@ -44,6 +44,37 @@ For multiple repositories, configure `implementation/server.config.json`:
 }
 ```
 
+### Adding Authorized Folder Paths
+
+To add another folder that ChatGPT can read, edit `implementation/server.config.json` and append one item to `repos[]`.
+
+Example:
+
+```json
+{
+  "name": "Obsidian",
+  "path": "E:\\Obsidian",
+  "description": "Local authorized repository: Obsidian"
+}
+```
+
+Rules:
+
+- `path` must be the exact local folder you want to authorize.
+- In JSON, Windows backslashes must be escaped as `\\`, for example `E:\\Obsidian`.
+- Keep existing `repos[]` entries unless you intentionally want to remove access.
+- Prefer the smallest useful project folder. Do not authorize a whole drive, user home directory, or network share root.
+- After changing `server.config.json`, restart the MCP server. `repo_refresh` can refresh only an already authorized repository; it cannot add a new folder to the whitelist.
+
+Typical restart and verification flow from `implementation`:
+
+```powershell
+node dist/startup.js --port 3100
+npm run check:link
+```
+
+Then ask ChatGPT to call `repo_list`. The new folder should appear with the exact `repo_path` returned by the server. If ChatGPT still sees the old list, re-select or refresh the connector/app metadata, then start a fresh chat if needed.
+
 On first use, ChatGPT can call `read_code` with no arguments or call `repo_list`; both return a compact structured `usage_guide` plus the configured repositories. If only one repository is configured, ChatGPT can call `repo_files`, `repo_search`, `repo_symbols`, `repo_fetch`, `repo_tree`, or `repo_refresh` without `repo_path`. If multiple repositories are configured, ChatGPT must call `repo_list` first, then pass the exact returned `repo_path`. Use `repo_path` only to choose the repository; file paths inside the selected repository remain relative.
 
 Recommended read order for an unfamiliar repository: use `repo_list` when needed, then `repo_files` to inspect exact paths and whether files are fetchable or indexed, then `repo_symbols` or `repo_search`, and finally `repo_fetch` for the smallest useful line range. Use `repo_tree` only when the user asks about directory layout or what is inside a folder:
@@ -63,7 +94,7 @@ The snapshot admits common source, config, and documentation files. It also admi
 
 The repository view is snapshot-based. Ask ChatGPT to call `repo_refresh` only when files changed after startup or an earlier result may be stale; the server will scan the same authorized root again, build a new snapshot/index, and switch to it only after the refresh succeeds.
 
-Large repositories may have files that are fetchable but not indexed for search. `repo_files` is the source of truth for file discovery inside the active snapshot: it can show `indexed`, `fetchable_unindexed`, and explicitly requested `excluded` entries without returning file contents. If `repo_search` cannot find a known file, ask ChatGPT to use `repo_files` with a precise `prefix` such as `src`, `tests`, or `tools`, then call `repo_fetch` with the returned relative path.
+Large repositories may have files that are fetchable but not indexed for search. `repo_files` is the source of truth for file discovery inside the active snapshot: it can show `indexed`, `fetchable_unindexed`, and explicitly requested `excluded` entries without returning file contents. Every `repo_search` result includes `coverage`, so an empty result does not claim that a file is absent. For a known fetchable-unindexed area, repeat `repo_search` with a precise `prefix` such as `src`, `tests`, or `tools`, then call `repo_fetch` with the returned relative path. If `repo_fetch` returns `snapshot_stale`, refresh before retrying because the file changed after the active snapshot.
 
 ## Tools
 
@@ -117,6 +148,21 @@ http://127.0.0.1:3100/mcp
 For ChatGPT web（网页端）, expose that local endpoint through Secure MCP Tunnel（安全 MCP 隧道）or another HTTPS（安全超文本传输协议）route. The ChatGPT page cannot directly reach `127.0.0.1` on your machine.
 
 Full setup guide: [CONNECT_CHATGPT.md](CONNECT_CHATGPT.md).
+
+## Optional Local Autostart / Keepalive
+
+For a Windows（视窗系统）or macOS（苹果系统） machine that should recover the local MCP（模型上下文协议）service and tunnel after login, configure the local-only supervisor from `implementation`. It writes only to your user home directory and manages only the child processes it starts:
+
+```powershell
+$implementationRoot = (Resolve-Path .\implementation).Path
+$agentEntry = Join-Path $implementationRoot "dist\agent.js"
+node (Join-Path $implementationRoot "node_modules\typescript\bin\tsc")
+node $agentEntry configure --working-directory $implementationRoot --tunnel-command "<tunnel-client-path>" --tunnel-args-json '["run","--profile-file","<profile-file>"]' --tunnel-env-json '{"TUNNEL_TOKEN":"READ_CODE_TUNNEL_TOKEN"}'
+node $agentEntry doctor
+node $agentEntry install
+```
+
+The absolute Node（节点运行时）entry works from a Windows UNC（网络共享）path; do not rely on `npm run agent` there. Keep token values in an operating-system or tunnel-client credential source: the mapping above stores only variable names, and the agent rejects inline token/key/password arguments. It never becomes a ChatGPT tool and never force-stops an external process that happens to own the same port. See [agent-supervisor.md](implementation/docs/agent-supervisor.md).
 
 ## ChatGPT App / Connector Setup
 
@@ -187,8 +233,11 @@ Implemented:
 - paginated `repo_files` file map with fetch/index/exclusion status
 - source-priority snapshot scanning for common code-review directories
 - text and symbol indexing
+- explainable `text` / `symbol` / `hybrid` search coverage, with optional bounded prefix scans for fetchable-unindexed files
+- snapshot-consistent fetches that require refresh after a file changes or escapes through a link
 - first-call `usage_guide` returned by `read_code` and `repo_list`
 - on-demand snapshot refresh with old-snapshot fallback on failure
+- user-login local MCP/tunnel supervisor for Windows and macOS; it is not exposed to ChatGPT as a tool
 - path guard, redaction, budgets, and audit ids
 - ChatGPT connector discovery endpoints
 - ChatGPT-compatible underscore tool names, with legacy dotted names accepted only as server-side aliases

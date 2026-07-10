@@ -117,6 +117,38 @@ For multiple repositories, edit `<implementation-root>/server.config.json`:
 }
 ```
 
+### Add or Remove Authorized Folders
+
+The repository whitelist lives in `<implementation-root>/server.config.json`.
+
+To add a folder, append one object to `repos[]`:
+
+```json
+{
+  "name": "Obsidian",
+  "path": "E:\\Obsidian",
+  "description": "Local authorized repository: Obsidian"
+}
+```
+
+Operational rules:
+
+1. Use the exact folder path that should be readable by ChatGPT.
+2. Escape Windows path separators as `\\` because this file is JSON.
+3. Keep all existing `repos[]` entries unless you are intentionally removing access.
+4. Do not authorize a whole drive, user home directory, network share root, or broad parent folder when a project folder is enough.
+5. Restart the local MCP server after saving the file. The running process reads the whitelist at startup.
+6. Use `npm run check:link` and then `repo_list` to confirm the new `repo_path`.
+7. Use `repo_refresh` only after a configured repository's files changed. It does not grant access to new folders.
+
+Example local restart from `<implementation-root>`:
+
+```powershell
+node dist/startup.js --port 3100
+```
+
+If another process is already listening on port `3100`, stop that process first, then start the server again. If ChatGPT still shows the old list after local verification passes, refresh or recreate the connector/app metadata and re-select `Read Code` in the chat.
+
 Inside ChatGPT, use the simple form for one repository and the explicit form for multiple repositories:
 
 ```text
@@ -261,10 +293,13 @@ Get-CimInstance Win32_Process -Filter "name = 'node.exe'" |
 | `npm run check:link` passes but ChatGPT still cannot read | The local MCP chain is healthy. Re-select `Read Code` in the current chat, refresh connector metadata, or start a fresh chat and ask it to call `repo_list`. |
 | ChatGPT still mentions `repo.list` or says no `repo_list` tool exists | The connector likely cached old tool metadata. Refresh or recreate the connector/app, then ask for `repo_list`. |
 | `npm run check:link` fails at `repo_list` | The local server is reachable but the MCP tool call failed; restart with the intended `--repo` or config file and re-run the check. |
-| `repo_search` cannot find a file that should exist | Use `repo_files` with a precise `prefix` such as `src`, `tests`, or `tools`; if the file is `fetchable_unindexed`, call `repo_fetch` with the returned relative path. |
+| `repo_search` cannot find a file that should exist | Inspect its `coverage` field. Use `repo_files` with a precise `prefix` such as `src`, `tests`, or `tools`; if the file is `fetchable_unindexed`, call `repo_search` again with that precise `prefix` or call `repo_fetch` with the returned relative path. |
 | `repo_files` returns `excluded` for a path | The file is outside the active fetch/index set, usually because of policy, size, binary/text detection, sensitivity, or snapshot entry limits. Narrow the authorized root or refresh after changing the repository if needed. |
 | OAuth setup fails | Current mode is `dev_local`; choose `No Authentication` for local testing. |
 | `repo_fetch` rejects an absolute file path | Use the absolute value only as `repo_path`; use a relative file `path` such as `src/index.ts`. |
+| `repo_fetch` returns `snapshot_stale` | The file changed after the active snapshot or no longer resolves safely inside the authorized root. Call `repo_refresh` for that repository, then search/fetch again. |
+| `npm run agent` looks under `C:\Windows` from a UNC path | From `implementation`, create `$agentEntry = Join-Path (Resolve-Path .).Path "dist\agent.js"`, then run `node $agentEntry status` (or `doctor`/`install`). The absolute Node（节点运行时）entry is independent of npm（Node 包管理器）的 UNC 当前目录限制。 |
+| Service or tunnel occasionally disconnects after login | Configure the local-only `agent` supervisor and install its user-login startup item. On Windows（视窗系统）, the Startup-folder fallback restarts the agent after an abnormal exit; normal stop does not restart it. It observes external services but never force-stops them. Pass credentials only through a profile（配置文件）or named environment mapping, never `--token`（令牌）or `--api-key`（接口密钥）arguments. See [implementation/docs/agent-supervisor.md](implementation/docs/agent-supervisor.md). |
 | Large repository scans are slow | Bind the smallest useful project folder instead of a drive, home directory, network share root, or full monorepo. |
 | Port `3100` is busy | Start with `--port 3101` and update tunnel target. |
 | New files do not appear | Ask ChatGPT to call `repo_refresh` only for the selected `repo_path`, then use `repo_search` or `repo_symbols` again before fetching. |

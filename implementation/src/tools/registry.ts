@@ -73,6 +73,8 @@ const apiToolInputSchema = z.object({
   input: apiToolObjectSchema.optional(),
 }).passthrough();
 
+const toolOutputSchema = z.object({}).passthrough();
+
 function repoPathFieldSchema(requireRepoPath: boolean) {
   return requireRepoPath ? repoPathSchema : repoPathSchema.optional();
 }
@@ -83,6 +85,7 @@ function searchInputSchema(requireRepoPath: boolean) {
     snapshot_id: snapshotSchema,
     query: z.string().min(1).max(CONFIG.tools.search.queryMaxLength),
     mode: z.enum(["text", "symbol", "hybrid"]).default("text"),
+    prefix: z.string().max(CONFIG.tools.files.prefixMaxLength).optional(),
     limit: positiveIntWithOptionalMax(CONFIG.tools.search.maxLimit, CONFIG.tools.search.defaultLimit),
   });
 }
@@ -146,6 +149,7 @@ export interface ToolRegistration {
   title: string;
   description: string;
   inputSchema: z.ZodObject<z.ZodRawShape>;
+  outputSchema: z.ZodObject<z.ZodRawShape>;
   annotations: {
     readOnlyHint: boolean;
     destructiveHint: boolean;
@@ -169,6 +173,7 @@ function buildToolRegistrations(requireRepoPath: boolean): ToolRegistration[] {
       title: CONFIG.tools.readCode.title,
       description: CONFIG.tools.readCode.description,
       inputSchema: apiToolInputSchema,
+      outputSchema: toolOutputSchema,
       annotations: toolAnnotations(),
       _meta: chatGptToolMeta("Reading repository", "Repository response ready"),
     },
@@ -177,6 +182,7 @@ function buildToolRegistrations(requireRepoPath: boolean): ToolRegistration[] {
       title: CONFIG.tools.apiTool.title,
       description: CONFIG.tools.apiTool.description,
       inputSchema: apiToolInputSchema,
+      outputSchema: toolOutputSchema,
       annotations: toolAnnotations(),
       _meta: chatGptToolMeta("Reading repository", "Repository response ready"),
     },
@@ -185,6 +191,7 @@ function buildToolRegistrations(requireRepoPath: boolean): ToolRegistration[] {
       title: CONFIG.tools.list.title,
       description: CONFIG.tools.list.description,
       inputSchema: listInputSchema,
+      outputSchema: toolOutputSchema,
       annotations: toolAnnotations(),
       _meta: chatGptToolMeta("Listing repositories", "Repositories listed"),
     },
@@ -193,6 +200,7 @@ function buildToolRegistrations(requireRepoPath: boolean): ToolRegistration[] {
       title: CONFIG.tools.search.title,
       description: CONFIG.tools.search.description,
       inputSchema: searchInputSchema(requireRepoPath),
+      outputSchema: toolOutputSchema,
       annotations: toolAnnotations(),
       _meta: chatGptToolMeta("Searching repository", "Search complete"),
     },
@@ -201,6 +209,7 @@ function buildToolRegistrations(requireRepoPath: boolean): ToolRegistration[] {
       title: CONFIG.tools.files.title,
       description: CONFIG.tools.files.description,
       inputSchema: filesInputSchema(requireRepoPath),
+      outputSchema: toolOutputSchema,
       annotations: toolAnnotations(),
       _meta: chatGptToolMeta("Listing repository files", "Repository files ready"),
     },
@@ -209,6 +218,7 @@ function buildToolRegistrations(requireRepoPath: boolean): ToolRegistration[] {
       title: CONFIG.tools.fetch.title,
       description: CONFIG.tools.fetch.description,
       inputSchema: fetchInputSchema(requireRepoPath),
+      outputSchema: toolOutputSchema,
       annotations: toolAnnotations(),
       _meta: chatGptToolMeta("Reading file segment", "File segment ready"),
     },
@@ -217,6 +227,7 @@ function buildToolRegistrations(requireRepoPath: boolean): ToolRegistration[] {
       title: CONFIG.tools.tree.title,
       description: CONFIG.tools.tree.description,
       inputSchema: treeInputSchema(requireRepoPath),
+      outputSchema: toolOutputSchema,
       annotations: toolAnnotations(),
       _meta: chatGptToolMeta("Reading repository tree", "Repository tree ready"),
     },
@@ -225,6 +236,7 @@ function buildToolRegistrations(requireRepoPath: boolean): ToolRegistration[] {
       title: CONFIG.tools.symbols.title,
       description: CONFIG.tools.symbols.description,
       inputSchema: symbolsInputSchema(requireRepoPath),
+      outputSchema: toolOutputSchema,
       annotations: toolAnnotations(),
       _meta: chatGptToolMeta("Finding symbols", "Symbols ready"),
     },
@@ -233,6 +245,7 @@ function buildToolRegistrations(requireRepoPath: boolean): ToolRegistration[] {
       title: CONFIG.tools.refresh.title,
       description: CONFIG.tools.refresh.description,
       inputSchema: refreshInputSchema(requireRepoPath),
+      outputSchema: toolOutputSchema,
       annotations: toolAnnotations(),
       _meta: chatGptToolMeta("Refreshing snapshot", "Snapshot refreshed"),
     },
@@ -786,7 +799,8 @@ export async function handleToolCall(
         repo_path: resolvedArgs.repo_path,
         snapshot_id: resolvedArgs.snapshot_id,
         query: String(resolvedArgs.query ?? ""),
-        mode: String(resolvedArgs.mode ?? "text"),
+        mode: (resolvedArgs.mode === "symbol" || resolvedArgs.mode === "hybrid" ? resolvedArgs.mode : "text"),
+        prefix: resolvedArgs.prefix ? String(resolvedArgs.prefix) : undefined,
         limit: Number(resolvedArgs.limit ?? CONFIG.tools.search.defaultLimit),
       }, manifest, rootDir, state.budgetState);
       break;

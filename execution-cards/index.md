@@ -1,13 +1,13 @@
 # CHATGPT-LOCAL-REPO-001 Execution Cards（执行任务卡索引）
 
-状态：implementation_ready_with_exec017_in_progress（基础链路已完成，正在补齐 ChatGPT 首次调用自解释导览）。
+状态：implementation_complete_exec019_publish_pending（基础链路、首次调用导览、可解释检索和用户级本地保活及其可靠性、凭据边界和 UNC 运维入口修复均已完成；等待远端发布凭据）。
 
 本目录把 `docs/design/task-card.md` 的设计拆成可执行任务卡。执行前必须先确认执行根目录：
 
 - 默认执行根目录：`<repo-root>/implementation`
 - 技术栈默认：`Node.js`（节点运行时） + `TypeScript`（类型脚本） + 官方 `@modelcontextprotocol/sdk`（模型上下文协议官方开发包）。
 - 第一版决策：无 `UI widget`（界面小组件），仅数据工具。
-- 当前实现范围：单用户、多仓库白名单、只读快照；`EXEC-014` 进一步收紧 ChatGPT（聊天模型）的低成本读取路径，`EXEC-015` 已校正过时文档与读仓入口说明，`EXEC-016` 已补齐大仓库源码优先快照和文件地图能力，`EXEC-017` 正在补齐首次调用自解释导览，并继续禁止候选仓库发现或重型 IDE（集成开发环境）能力进入当前链路。
+- 当前实现范围：单用户、多仓库白名单、只读快照；`EXEC-014` 进一步收紧 ChatGPT（聊天模型）的低成本读取路径，`EXEC-015` 已校正过时文档与读仓入口说明，`EXEC-016` 已补齐大仓库源码优先快照和文件地图能力，`EXEC-017` 已提供首次调用自解释导览。`EXEC-018` 在不改变 MCP（模型上下文协议）只读工具边界的前提下，补齐可解释检索覆盖、快照一致性和仅用户登录后的跨平台本地自启动/保活。
 
 ## 执行顺序
 
@@ -31,6 +31,8 @@
 | 15 | `EXEC-015-doc-truth-and-overview-entry-gate.md` | 校正文档真实状态、收敛读仓入口说明并暂缓过重能力 | EXEC-014 |
 | 16 | `EXEC-016-snapshot-file-map-coverage.md` | 修复大仓库源码优先快照覆盖并新增可分页文件地图 | EXEC-015 |
 | 17 | `EXEC-017-first-call-onboarding-guide.md` | 让 ChatGPT 首次调用即可获得结构化读仓导览 | EXEC-016 |
+| 18 | `EXEC-018-search-coverage-and-local-supervisor.md` | 提升检索覆盖与快照一致性，并提供 Windows（视窗系统）/macOS（苹果系统）用户级自启动保活 | EXEC-017 |
+| 19 | `EXEC-019-supervisor-reliability-and-secret-boundaries.md` | 修复跨 UNC 运维入口、启动文件夹回退、受管退避、状态所有权与本机凭据边界 | EXEC-018 |
 
 ## 全局硬边界
 
@@ -76,4 +78,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File ".\execution-cards\validate-
 - `EXEC-015` 关闭前必须证明当前 16 张卡结构校验通过，活动文档不再误导当前工具仍为 `not_implemented`（未实现），读仓入口说明不再互相冲突，并通过 Claude（外部评审模型）收口复核。
 - `EXEC-016` 关闭前必须证明当前 17 张卡结构校验通过，`repo_files`（文件列表）工具契约、源码优先快照扫描、`repo_fetch`（读取）读取 fetchable-unindexed（可读取但未索引）文件和本地链路自检均通过，并通过 Claude（外部评审模型）收口复核。
 - `EXEC-017` 关闭前必须证明当前 18 张卡结构校验通过，`read_code {}` 和 `repo_list` 均返回同源结构化导览，显式 wrapper（包装器）路由不回归，本地链路自检覆盖首次调用路径，并通过 Claude（外部评审模型）收口复核。
+- `EXEC-018` 关闭前必须证明当前 19 张卡结构校验通过：临时运行产物不挤占全文索引、核心目录优先、`text`/`symbol`/`hybrid` 三种搜索模式实际不同、搜索覆盖状态可解释、`repo_fetch` 拒绝快照后变更或越界重解析点；本地守护 CLI（命令行工具）的 Windows 任务计划和 macOS LaunchAgent（启动代理）配置渲染测试通过，当前平台的安装、健康检查和本地链路自检完成。保活不得新增 MCP 写入或系统管理工具，也不得终止健康的外部进程。
+- `EXEC-019` 关闭前必须证明当前 20 张卡结构校验通过：Windows UNC（网络共享）下有绝对 Node（节点运行时）守护入口，启动文件夹回退在异常退出后重启且正常停止不重启，连续受管失败使用累积且有上限的退避，状态不误报有效受管进程，内联密钥/隧道令牌不进入用户配置、日志或输出；MCP（模型上下文协议）只读边界和外部进程不强杀规则不回归。
 - 父级 `docs/reports/validation-report.md` 必须同步记录执行卡拆分状态，区分 `ready_for_ai_execution_gated`（任务可执行门禁就绪）与 runtime complete（运行时完成）。

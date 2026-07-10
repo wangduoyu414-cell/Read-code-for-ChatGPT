@@ -5,8 +5,7 @@
  */
 
 import type { SnapshotManifest } from "../snapshot/manifest.js";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { readSnapshotFile } from "../snapshot/snapshot-file.js";
 
 export interface SymbolHit {
   name: string;
@@ -42,7 +41,9 @@ export function buildSymbolIndex(manifest: SnapshotManifest, rootDir: string): S
     if (!file.index_admitted) continue;
     const ext = file.extension;
     try {
-      const content = readFileSync(join(rootDir, file.relative_path), "utf-8");
+      const read = readSnapshotFile(rootDir, file);
+      if (!read.ok) continue;
+      const content = read.content;
       indexedPaths.add(file.relative_path);
       const lines = content.split("\n");
       const applicable = SYMBOL_PATTERNS.filter((p) => p.extensions.includes(ext));
@@ -84,10 +85,23 @@ export function searchSymbols(
   return symbols
     .filter((s) => {
       const nameMatch = s.name.toLowerCase().includes(qLower);
-      if (language) return nameMatch && s.path.endsWith(`.${language}`);
+      if (language) return nameMatch && languageMatches(s.path, language);
       return nameMatch;
     })
     .slice(0, limit);
+}
+
+const LANGUAGE_EXTENSIONS: Readonly<Record<string, readonly string[]>> = {
+  typescript: [".ts", ".tsx"], ts: [".ts"], tsx: [".tsx"],
+  javascript: [".js", ".jsx"], js: [".js"], jsx: [".jsx"],
+  python: [".py"], py: [".py"],
+  go: [".go"],
+};
+
+function languageMatches(path: string, requestedLanguage: string): boolean {
+  const normalized = requestedLanguage.trim().toLowerCase().replace(/^\./, "");
+  const extensions = LANGUAGE_EXTENSIONS[normalized] ?? [`.${normalized}`];
+  return extensions.some((extension) => path.toLowerCase().endsWith(extension));
 }
 
 export function clearSymbolIndex(): void {

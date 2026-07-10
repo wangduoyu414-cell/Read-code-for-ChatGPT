@@ -10,6 +10,7 @@ import { runIndexer } from "../src/indexer/indexer.js";
 import { isPathIndexed, indexSkipReason } from "../src/indexer/index-status.js";
 import { searchText } from "../src/indexer/text-index.js";
 import { searchSymbols } from "../src/indexer/symbol-index.js";
+import { sortIndexCandidates } from "../src/indexer/index-policy.js";
 
 const FIXTURE_DIR = join(import.meta.dirname ?? fileURLToPath(new URL(".", import.meta.url)), "..", "fixtures", "safe-repo");
 
@@ -108,5 +109,45 @@ await describe("Indexer", async () => {
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
+  });
+
+  await it("prioritizes source and configuration files before runtime artifacts at the index limit", () => {
+    const tempRoot = join(import.meta.dirname ?? fileURLToPath(new URL(".", import.meta.url)), "..", "tmp", `index-priority-${Date.now()}`);
+    mkdirSync(join(tempRoot, ".pytest_tmp"), { recursive: true });
+    mkdirSync(join(tempRoot, "configs"), { recursive: true });
+    mkdirSync(join(tempRoot, "src"), { recursive: true });
+    try {
+      writeFileSync(join(tempRoot, ".pytest_tmp", "result.ts"), "export const temporaryResult = true;\n");
+      writeFileSync(join(tempRoot, "configs", "settings.ts"), "export const settings = {};\n");
+      writeFileSync(join(tempRoot, "src", "main.ts"), "export const main = () => true;\n");
+      const repo = registerRepo(tempRoot);
+      bindRepo(repo.repo_id);
+      const localSnapId = `snap-priority-${Date.now()}`;
+      requestSnapshot(localSnapId, repo.repo_id);
+      transitionState(localSnapId, "manifest_building");
+      transitionState(localSnapId, "filtering");
+      const { manifest } = ingestDirectory(tempRoot, repo.repo_id, localSnapId);
+      attachManifest(localSnapId, manifest);
+
+      const temporary = manifest.files.find((file) => file.relative_path === ".pytest_tmp/result.ts");
+      assert.ok(temporary);
+      assert.equal(temporary.index_admitted, false);
+      assert.equal(temporary.index_reject_reason, "runtime_artifact_default");
+      const ordered = sortIndexCandidates(manifest.files.filter((file) => file.index_admitted));
+      assert.deepEqual(ordered.map((file) => file.relative_path), ["src/main.ts", "configs/settings.ts"]);
+
+      runIndexer(manifest, tempRoot, { maxIndexedFiles: 1 });
+      assert.equal(isPathIndexed(localSnapId, "src/main.ts"), true);
+      assert.equal(isPathIndexed(localSnapId, "configs/settings.ts"), false);
+      assert.equal(isPathIndexed(localSnapId, ".pytest_tmp/result.ts"), false);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  await it("accepts language names as symbol-index aliases", () => {
+    const pythonByName = searchSymbols(snapId, "ConfigLoader", "python", 10);
+    const pythonByExtension = searchSymbols(snapId, "ConfigLoader", "py", 10);
+    assert.deepEqual(pythonByName, pythonByExtension);
   });
 });

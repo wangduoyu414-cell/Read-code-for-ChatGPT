@@ -126,6 +126,7 @@ await describe("Public tool contract", async () => {
     assert.deepEqual(refresh?.inputSchema.required, []);
 
     assert.equal(inputProperty(CONFIG.tools.search.name, "query").maxLength, CONFIG.tools.search.queryMaxLength);
+    assert.equal(inputProperty(CONFIG.tools.search.name, "prefix").maxLength, CONFIG.tools.files.prefixMaxLength);
     assert.equal(inputProperty(CONFIG.tools.search.name, "limit").default, CONFIG.tools.search.defaultLimit);
     assertOptionalMaximum(CONFIG.tools.search.name, "limit", CONFIG.tools.search.maxLimit);
 

@@ -12,7 +12,8 @@
     "check:link": "node scripts/check-read-code-link.mjs",
     "start": "node dist/startup.js",
     "start:server": "node dist/server.js",
-    "dev": "tsx src/startup.ts"
+    "dev": "tsx src/startup.ts",
+    "agent": "node dist/agent.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"

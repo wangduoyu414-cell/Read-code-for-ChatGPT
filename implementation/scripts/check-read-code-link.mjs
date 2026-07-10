@@ -148,6 +148,11 @@ function requireExpectedTools(names) {
 function requireChatGptToolMeta(tools) {
   for (const tool of tools) {
     const item = requiredObject(tool, "tool");
+    const outputSchema = requiredObject(item.outputSchema, `${item.name}.outputSchema`);
+    if (outputSchema.type !== "object") {
+      throw new Error(`${item.name} must declare an object outputSchema for structuredContent.`);
+    }
+
     const meta = requiredObject(item._meta, `${item.name}._meta`);
     const ui = requiredObject(meta.ui, `${item.name}._meta.ui`);
     const visibility = requiredArray(ui.visibility, `${item.name}._meta.ui.visibility`);

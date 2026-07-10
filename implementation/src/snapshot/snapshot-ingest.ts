@@ -11,6 +11,7 @@ import { CONFIG } from "../config.js";
 import { isSensitiveFileType, scanForSecrets } from "../security/secret-scanner.js";
 import { validateFilePath } from "../security/path-guard.js";
 import { generateAuditId } from "../audit/audit-id.js";
+import { defaultIndexRejectReason } from "../indexer/index-policy.js";
 
 const BLOCKED_DIRECTORY_REASONS = new Map<string, string>([
   [".git", "directory block: .git"],
@@ -356,7 +357,8 @@ export function ingestDirectory(rootDir: string, repo_id: string, snapshotIdPara
           extension: ext,
           sensitive_detected: false,
           fetchable: true,
-          index_admitted: true,
+          index_admitted: defaultIndexRejectReason(rel) === undefined,
+          ...(defaultIndexRejectReason(rel) === undefined ? {} : { index_reject_reason: defaultIndexRejectReason(rel) }),
         });
       }
     }

@@ -43,10 +43,11 @@ export const CONFIG = {
       name: "repo_search" as const,
       title: "Repository Search",
       description:
-        "Search indexed text, config, docs, and error strings within an authorized immutable repository snapshot. Use repo_files first when paths are unclear or a large repository may contain fetchable files that are not indexed. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo_list.",
+        "Search an authorized immutable repository snapshot. mode=text searches indexed text, mode=symbol searches definitions, and mode=hybrid combines both. Every response states indexed and fetchable-unindexed coverage; use a precise prefix only to scan fetchable unindexed manifest files. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo_list.",
       queryMaxLength: 512,
-      defaultLimit: 10,
-      maxLimit: null as number | null,
+    defaultLimit: 10,
+    maxLimit: null as number | null,
+    onDemandPrefixMaxFiles: 200,
     },
 
     files: {
@@ -65,7 +66,7 @@ export const CONFIG = {
       name: "repo_fetch" as const,
       title: "Repository Fetch Segment",
       description:
-        "Fetch the requested line segment from a known file path. Use this after repo_files, repo_search, repo_symbols, or a targeted repo_tree identifies the file. Rejects absolute paths, parent-directory traversal, symlink escapes, and sensitive files. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo_list.",
+        "Fetch the requested line segment from a known file path. Use this after repo_files, repo_search, repo_symbols, or a targeted repo_tree identifies the file. Rejects absolute paths, parent-directory traversal, symlink escapes, sensitive files, and files changed after the active snapshot; refresh before retrying a stale file. If only one repository is configured, repo_path may be omitted; otherwise use a repo_path from repo_list.",
       pathMaxLength: 512,
       purposeMaxLength: 256,
     },
@@ -115,7 +116,7 @@ export const CONFIG = {
   },
 
   /** Policy version — must increment on any policy or schema change. */
-  policyVersion: "policy-2026-07-01-v6",
+  policyVersion: "policy-2026-07-10-v7",
 
   /** Content origin and trust markers for prompt-injection isolation (§17.5). */
   contentOrigin: "repository_snapshot" as const,

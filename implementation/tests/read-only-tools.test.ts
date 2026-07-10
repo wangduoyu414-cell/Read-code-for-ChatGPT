@@ -1,6 +1,6 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { registerRepo, bindRepo } from "../src/repo/repo-catalog.js";
@@ -98,6 +98,37 @@ await describe("repo.files", async () => {
     assert.equal(secondData.items[0]?.path, "src/ui/Button.tsx");
     assert.equal(secondData.has_more, false);
     assert.equal(secondData.next_cursor, null);
+  });
+
+  await it("uses text, symbol, and hybrid search modes with coverage disclosure", async () => {
+    const text = await repoSearcher({ repo_id: repoId, repo_path: rootDir, snapshot_id: snapId, query: "App", mode: "text", limit: 10 }, manifest, rootDir, budget);
+    const symbols = await repoSearcher({ repo_id: repoId, repo_path: rootDir, snapshot_id: snapId, query: "App", mode: "symbol", limit: 10 }, manifest, rootDir, budget);
+    const hybrid = await repoSearcher({ repo_id: repoId, repo_path: rootDir, snapshot_id: snapId, query: "App", mode: "hybrid", limit: 10 }, manifest, rootDir, budget);
+    if (isToolError(text) || isToolError(symbols) || isToolError(hybrid)) assert.fail("expected search modes to succeed");
+    const textData = text as { mode: string; hits: Array<{ source: string }>; coverage: { index_status: string } };
+    const symbolData = symbols as { mode: string; hits: Array<{ source: string }>; coverage: { index_status: string } };
+    const hybridData = hybrid as { mode: string; hits: Array<{ source: string }>; coverage: { index_status: string } };
+    assert.equal(textData.mode, "text");
+    assert.ok(textData.hits.every((hit) => hit.source === "text"));
+    assert.equal(symbolData.mode, "symbol");
+    assert.ok(symbolData.hits.every((hit) => hit.source === "symbol"));
+    assert.equal(hybridData.mode, "hybrid");
+    assert.ok(hybridData.hits.some((hit) => hit.source === "symbol"));
+    assert.equal(typeof hybridData.coverage.index_status, "string");
+  });
+
+  await it("scans an explicit prefix for fetchable files outside the full-text index", async () => {
+    const file = manifest.files.find((item) => item.relative_path === "src/utils/helpers.py");
+    assert.ok(file);
+    file.index_admitted = false;
+    file.index_reject_reason = "runtime_artifact_default";
+    runIndexer(manifest, rootDir);
+    const result = await repoSearcher({ repo_id: repoId, repo_path: rootDir, snapshot_id: snapId, query: "find_entry_point", mode: "text", prefix: "src/utils", limit: 5 }, manifest, rootDir, budget);
+    if (isToolError(result)) assert.fail(`Unexpected error: ${result.error_code}`);
+    const data = result as { hits: Array<{ source: string }>; coverage: { on_demand_prefix_scan: { requested: boolean; scanned_files: number } } };
+    assert.ok(data.hits.some((hit) => hit.source === "on_demand"));
+    assert.equal(data.coverage.on_demand_prefix_scan.requested, true);
+    assert.ok(data.coverage.on_demand_prefix_scan.scanned_files > 0);
   });
 
   await it("rejects invalid or stale cursors", async () => {
@@ -231,6 +262,58 @@ await describe("repo.tree", async () => {
     assert.ok(data.entries.length > 0);
     assert.ok(data.entries.some((e) => e.path === "src" && e.type === "directory"));
     assert.ok(data.entries.some((e) => e.path === "tests" && e.type === "directory"));
+  });
+
+  await it("rejects a file changed after the snapshot was created", async () => {
+    const tempRoot = join(import.meta.dirname ?? fileURLToPath(new URL(".", import.meta.url)), "..", "tmp", `fetch-stale-${Date.now()}`);
+    mkdirSync(tempRoot, { recursive: true });
+    try {
+      writeFileSync(join(tempRoot, "stable.ts"), "export const stable = 1;\n");
+      const repo = registerRepo(tempRoot);
+      bindRepo(repo.repo_id);
+      const localSnapId = `snap-stale-${Date.now()}`;
+      requestSnapshot(localSnapId, repo.repo_id);
+      transitionState(localSnapId, "manifest_building");
+      transitionState(localSnapId, "filtering");
+      const { manifest: localManifest } = ingestDirectory(tempRoot, repo.repo_id, localSnapId);
+      attachManifest(localSnapId, localManifest);
+      writeFileSync(join(tempRoot, "stable.ts"), "export const stable = 2;\n");
+      const result = await repoFetcher({ repo_id: repo.repo_id, repo_path: tempRoot, snapshot_id: localSnapId, path: "stable.ts", line_start: 1, line_end: 1, purpose: "verify snapshot consistency" }, localManifest, tempRoot, budget);
+      assert.equal(isToolError(result), true);
+      if (isToolError(result)) {
+        assert.equal(result.error_code, "snapshot_stale");
+        assert.equal(result.retryable, true);
+      }
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  await it("rejects a manifest path replaced with a symlink", async () => {
+    if (process.platform === "win32") return;
+    const tempRoot = join(import.meta.dirname ?? fileURLToPath(new URL(".", import.meta.url)), "..", "tmp", `fetch-link-${Date.now()}`);
+    mkdirSync(tempRoot, { recursive: true });
+    try {
+      const targetPath = join(tempRoot, "target.ts");
+      const outsidePath = join(tempRoot, "outside.ts");
+      writeFileSync(targetPath, "export const safe = true;\n");
+      writeFileSync(outsidePath, "export const changed = true;\n");
+      const repo = registerRepo(tempRoot);
+      bindRepo(repo.repo_id);
+      const localSnapId = `snap-link-${Date.now()}`;
+      requestSnapshot(localSnapId, repo.repo_id);
+      transitionState(localSnapId, "manifest_building");
+      transitionState(localSnapId, "filtering");
+      const { manifest: localManifest } = ingestDirectory(tempRoot, repo.repo_id, localSnapId);
+      attachManifest(localSnapId, localManifest);
+      unlinkSync(targetPath);
+      symlinkSync(outsidePath, targetPath);
+      const result = await repoFetcher({ repo_id: repo.repo_id, repo_path: tempRoot, snapshot_id: localSnapId, path: "target.ts", line_start: 1, line_end: 1, purpose: "verify symlink protection" }, localManifest, tempRoot, budget);
+      assert.equal(isToolError(result), true);
+      if (isToolError(result)) assert.equal(result.error_code, "snapshot_stale");
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
   });
 
   await it("treats path dot as repository root", async () => {
